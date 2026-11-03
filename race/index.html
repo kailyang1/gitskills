@@ -554,8 +554,8 @@ function lanePoint(i, u){
   return { x: a.x+(b.x-a.x)*f, y: a.y+(b.y-a.y)*f, dx: a.dx+(b.dx-a.dx)*f };
 }
 
-// ---------- perspective camera (raised top-down view over the bowl) ----------
-const CAMX=CX, CAMY=880, KF=300, VPER=132000, HOR=88;
+// ---------- perspective camera (v9 grandstand view) ----------
+const CAMX=CX, CAMY=700, KF=300, VPER=92000, HOR=96;
 function project(x,y){
   const d = CAMY - y;              // depth from camera
   const s = KF/d;                  // perspective scale
