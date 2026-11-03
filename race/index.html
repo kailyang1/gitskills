@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#1a1c2c">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>像素跑馬場</title>
+<style>
+  :root{
+    --bg:#14162a; --panel:#232741; --panel2:#2d3252; --ink:#f4f0e8; --dim:#8b90b3;
+    --gold:#ffcd75; --green:#63c74d; --red:#ef5d66; --blue:#4d9be6; --line:#0c0d1a;
+    --border:#3a3f63;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    background:var(--bg); color:var(--ink);
+    font-family:"PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+    display:flex; justify-content:center;
+    overscroll-behavior:none; touch-action:manipulation;
+    user-select:none; -webkit-user-select:none;
+  }
+  #app{
+    width:100%; max-width:430px; min-height:100dvh;
+    display:flex; flex-direction:column;
+    padding:env(safe-area-inset-top) 8px calc(10px + env(safe-area-inset-bottom));
+    gap:8px;
+  }
+  .num{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace; font-weight:700;}
+
+  /* ---------- header ---------- */
+  header{
+    display:flex; align-items:center; gap:8px;
+    padding:8px 10px; background:var(--panel);
+    border:3px solid var(--line); box-shadow:0 4px 0 var(--line);
+  }
+  header .logo{font-weight:900; font-size:15px; letter-spacing:1px; color:var(--gold); white-space:nowrap;}
+  header .bank{
+    margin-left:auto; display:flex; align-items:baseline; gap:4px;
+    background:var(--panel2); border:2px solid var(--border); padding:4px 8px;
+  }
+  header .bank .coin{color:var(--gold); font-size:13px;}
+  header .bank #bankVal{font-size:16px; color:var(--gold);}
+  .rno{
+    background:var(--panel2); border:2px solid var(--border);
+    padding:4px 7px; font-size:12px; color:var(--dim); white-space:nowrap;
+  }
+  .iconbtn{
+    width:36px;height:36px; flex:0 0 36px;
+    background:var(--panel2); border:2px solid var(--border); color:var(--ink);
+    font-size:16px; display:flex; align-items:center; justify-content:center;
+  }
+  .iconbtn:active{transform:translateY(2px);}
+
+  /* ---------- race canvas ---------- */
+  #stageWrap{position:relative; border:3px solid var(--line); box-shadow:0 4px 0 var(--line); background:#000;}
+  #cv{display:block; width:100%; image-rendering:pixelated; image-rendering:crisp-edges;}
+  #raceMsg{
+    position:absolute; top:38%; left:50%; transform:translate(-50%,-50%);
+    font-size:22px; font-weight:900; color:#fff;
+    text-shadow:2px 2px 0 #000, -2px 2px 0 #000, 2px -2px 0 #000, -2px -2px 0 #000;
+    letter-spacing:2px; pointer-events:none; opacity:0; transition:opacity .15s;
+    white-space:nowrap;
+  }
+  #countdown{
+    position:absolute; inset:0; display:none; align-items:center; justify-content:center;
+    font-size:64px; font-weight:900; color:var(--gold);
+    text-shadow:3px 3px 0 #000; pointer-events:none;
+  }
+  #liveBar{
+    position:absolute; bottom:0; left:0; right:0;
+    display:none; gap:6px; padding:4px 6px;
+    background:rgba(12,13,26,.82); overflow:hidden; white-space:nowrap;
+  }
+  #liveBar .lb{display:inline-flex; align-items:center; gap:3px; font-size:11px; font-weight:700;}
+  #liveBar .lb i{width:10px;height:10px;display:inline-block;border:1px solid #000;}
+  #liveBar .lb b{color:var(--gold);}
+
+  /* ---------- odds board ---------- */
+  #board{display:grid; grid-template-columns:1fr 1fr; gap:6px;}
+  .hcard{
+    background:var(--panel); border:3px solid var(--border);
+    padding:6px 7px; display:flex; flex-direction:column; gap:3px;
+    cursor:pointer; position:relative; min-height:64px;
+  }
+  .hcard:active{transform:translateY(2px);}
+  .hcard.sel{border-color:var(--gold); background:var(--panel2);}
+  .hcard .r1{display:flex; align-items:center; gap:5px;}
+  .hcard .cap{
+    width:18px;height:18px; flex:0 0 18px; border:2px solid #000;
+    display:flex; align-items:center; justify-content:center;
+    font-size:10px; font-weight:900; color:#fff; text-shadow:1px 1px 0 #000;
+  }
+  .hcard .nm{font-size:13px; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+  .hcard .r2{display:flex; align-items:baseline; gap:6px;}
+  .hcard .wodds{font-size:17px; color:var(--gold);}
+  .hcard .podds{font-size:11px; color:var(--dim);}
+  .hcard .r3{display:flex; gap:5px; font-size:10px; color:var(--dim); align-items:center;}
+  .hcard .stars{color:var(--gold); letter-spacing:-1px;}
+  .hcard .tag{border:1px solid var(--border); padding:0 3px;}
+  .hcard .betmark{
+    position:absolute; top:-6px; right:-4px; background:var(--red); color:#fff;
+    font-size:10px; font-weight:900; padding:1px 5px; border:2px solid #000; display:none;
+  }
+  .hcard.hasbet .betmark{display:block;}
+
+  /* ---------- controls ---------- */
+  #controls{display:flex; flex-direction:column; gap:7px;}
+  .ctlrow{display:flex; gap:6px; align-items:center;}
+  .seg{display:flex; border:3px solid var(--border); background:var(--panel);}
+  .seg button{
+    background:none; border:none; color:var(--dim); font-weight:900; font-size:13px;
+    padding:8px 14px; font-family:inherit;
+  }
+  .seg button.on{background:var(--gold); color:#1a1c2c;}
+  .chips{display:flex; gap:6px; flex:1;}
+  .chip{
+    flex:1; padding:9px 0; text-align:center; font-weight:900; font-size:13px;
+    background:var(--panel2); color:var(--ink); border:3px solid var(--border);
+    font-family:ui-monospace,Menlo,monospace;
+  }
+  .chip.on{background:var(--green); color:#0c2210; border-color:#0c0d1a;}
+  .chip:active{transform:translateY(2px);}
+  #tickets{display:flex; flex-direction:column; gap:4px; max-height:88px; overflow-y:auto;}
+  .tk{
+    display:flex; align-items:center; gap:6px; font-size:12px;
+    background:var(--panel); border:2px solid var(--border); padding:4px 7px;
+  }
+  .tk .tt{font-size:10px; font-weight:900; padding:1px 4px; border:1px solid var(--border);}
+  .tk .tt.W{color:var(--gold);} .tk .tt.P{color:var(--blue);}
+  .tk .amt{margin-left:auto; color:var(--gold);}
+  .tk .x{
+    background:var(--red); color:#fff; border:1px solid #000; width:20px; height:20px;
+    font-weight:900; display:flex; align-items:center; justify-content:center; font-size:11px;
+  }
+  #go{
+    padding:14px 0; font-size:17px; font-weight:900; letter-spacing:2px;
+    background:var(--red); color:#fff; border:3px solid var(--line);
+    box-shadow:0 4px 0 var(--line); font-family:inherit;
+  }
+  #go:disabled{background:var(--panel2); color:var(--dim); box-shadow:none;}
+  #go:active:not(:disabled){transform:translateY(3px); box-shadow:0 1px 0 var(--line);}
+
+  /* ---------- modals ---------- */
+  .modal{
+    position:fixed; inset:0; background:rgba(10,11,22,.8);
+    display:none; align-items:center; justify-content:center; z-index:50; padding:16px;
+  }
+  .modal.show{display:flex;}
+  .mbox{
+    width:100%; max-width:380px; background:var(--panel);
+    border:3px solid var(--line); box-shadow:0 6px 0 var(--line);
+    padding:16px 14px; max-height:82dvh; overflow-y:auto;
+  }
+  .mbox h2{font-size:16px; color:var(--gold); text-align:center; letter-spacing:2px; margin-bottom:10px;}
+  .rk{display:flex; align-items:center; gap:7px; padding:4px 6px; font-size:13px; border-bottom:1px solid var(--border);}
+  .rk .pos{width:22px; font-weight:900; color:var(--dim);}
+  .rk.first .pos{color:var(--gold);}
+  .rk .cap{width:14px;height:14px; flex:0 0 14px; border:1px solid #000;}
+  .rk .gap{margin-left:auto; color:var(--dim); font-size:11px;}
+  .settle{margin-top:10px; border-top:2px solid var(--border); padding-top:8px;}
+  .stk{display:flex; align-items:center; gap:6px; font-size:12px; padding:3px 0;}
+  .stk .res{margin-left:auto; font-weight:900;}
+  .stk .res.win{color:var(--green);} .stk .res.lose{color:var(--red);}
+  .net{
+    text-align:center; font-size:15px; margin:10px 0 4px; font-weight:900;
+  }
+  .net b{font-size:26px;}
+  .net.pos b{color:var(--green);} .net.neg b{color:var(--red);} .net.zero b{color:var(--dim);}
+  .mbtn{
+    display:block; width:100%; margin-top:12px; padding:12px 0;
+    background:var(--gold); color:#1a1c2c; font-weight:900; font-size:15px;
+    border:3px solid var(--line); box-shadow:0 4px 0 var(--line); font-family:inherit; letter-spacing:2px;
+  }
+  .mbtn:active{transform:translateY(2px); box-shadow:none;}
+  .statgrid{display:grid; grid-template-columns:1fr 1fr; gap:6px; font-size:13px; margin-bottom:10px;}
+  .statgrid div{background:var(--panel2); padding:7px 8px; border:2px solid var(--border);}
+  .statgrid span{display:block; color:var(--dim); font-size:10px; margin-bottom:2px;}
+  #spark{width:100%; height:64px; background:var(--panel2); border:2px solid var(--border); image-rendering:pixelated;}
+  #doleBtn{
+    display:none; margin:8px auto 0; padding:10px 22px;
+    background:var(--blue); color:#fff; font-weight:900; border:3px solid var(--line);
+    box-shadow:0 4px 0 var(--line); font-family:inherit; font-size:14px;
+  }
+  #toast{
+    position:fixed; bottom:96px; left:50%; transform:translateX(-50%);
+    background:#000; color:var(--gold); font-size:13px; font-weight:700;
+    padding:8px 16px; border:2px solid var(--gold); opacity:0; transition:opacity .2s;
+    pointer-events:none; z-index:60; white-space:nowrap;
+  }
+  .coverall{position:fixed; inset:0; z-index:40; display:none;}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="logo">🏇 像素跑馬場</div>
+    <div class="bank"><span class="coin">💰</span><span class="num" id="bankVal">1000</span></div>
+    <div class="rno num" id="raceNoTag"></div>
+    <button class="iconbtn" id="soundBtn" title="音效">🔊</button>
+    <button class="iconbtn" id="statsBtn" title="战绩">📊</button>
+  </header>
+
+  <div id="stageWrap">
+    <canvas id="cv" width="780" height="560"></canvas>
+    <div id="raceMsg"></div>
+    <div id="countdown"></div>
+    <div id="liveBar"></div>
+  </div>
+
+  <div id="board"></div>
+
+  <div id="controls">
+    <div class="ctlrow">
+      <div class="seg">
+        <button id="typeW" class="on">独赢</button>
+        <button id="typeP">位置</button>
+      </div>
+      <div class="chips">
+        <button class="chip" data-v="10">10</button>
+        <button class="chip on" data-v="50">50</button>
+        <button class="chip" data-v="100">100</button>
+        <button class="chip" data-v="500">500</button>
+        <button class="chip" data-v="max">全押</button>
+      </div>
+    </div>
+    <div id="tickets"></div>
+    <button id="go">開 跑</button>
+    <button id="doleBtn">💸 领取低保 +200</button>
+  </div>
+</div>
+
+<div class="modal" id="resultModal"><div class="mbox">
+  <h2 id="resTitle">🏁 赛 果</h2>
+  <div id="ranks"></div>
+  <div class="settle" id="settle"></div>
+  <div class="net" id="netRow"></div>
+  <button class="mbtn" id="nextBtn">下 一 场</button>
+</div></div>
+
+<div class="modal" id="statsModal"><div class="mbox">
+  <h2>📊 战 绩</h2>
+  <div class="statgrid" id="statGrid"></div>
+  <canvas id="spark" width="320" height="64"></canvas>
+  <button class="mbtn" id="closeStats">关 闭</button>
+  <button class="mbtn" id="resetBtn" style="background:var(--red);color:#fff;font-size:12px;padding:8px 0;">重置全部数据</button>
+</div></div>
+
+<div id="toast"></div>
+<div class="coverall" id="cover"></div>
+
+<script>
+'use strict';
+/* =====================================================
+   像素跑馬場 — single-file mobile horse racing betting game
+   ===================================================== */
+
+// ---------- persistent state ----------
+const LS = {
+  get(k, d){ try{ const v = localStorage.getItem('pr_'+k); return v===null? d : JSON.parse(v);}catch(e){return d;} },
+  set(k, v){ try{ localStorage.setItem('pr_'+k, JSON.stringify(v)); }catch(e){} }
+};
+let bank   = LS.get('bank', 1000);
+let stats  = LS.get('stats', {races:0, staked:0, returned:0, paidTickets:0, tickets:0, biggestWin:0, dole:0, curve:[1000]});
+let soundOn = LS.get('sound', true);
+
+// ---------- utils ----------
+const $ = s => document.querySelector(s);
+const rnd = (a,b)=> a + Math.random()*(b-a);
+const rndi = (a,b)=> Math.floor(rnd(a,b+1));
+const clamp = (v,a,b)=> Math.max(a, Math.min(b, v));
+const fmt = n => n.toLocaleString('en-US');
+function shuffle(arr){ const a=arr.slice(); for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1)); [a[i],a[j]]=[a[j],a[i]];} return a; }
+function softmax(xs){ const m=Math.max(...xs); const es=xs.map(x=>Math.exp(x-m)); const s=es.reduce((p,c)=>p+c,0); return es.map(e=>e/s); }
+
+// ---------- audio (tiny synth, no assets) ----------
+let AC=null;
+function ac(){ if(!AC){ try{ AC = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} } return AC; }
+function beep(f, dur=0.08, type='square', vol=0.12, when=0){
+  if(!soundOn) return; const ctx=ac(); if(!ctx) return;
+  const t = ctx.currentTime + when;
+  const o = ctx.createOscillator(), g = ctx.createGain();
+  o.type=type; o.frequency.value=f;
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t+dur);
+  o.connect(g); g.connect(ctx.destination);
+  o.start(t); o.stop(t+dur+0.02);
+}
+const sfx = {
+  click(){ beep(660,0.05,'square',0.08); },
+  chip(){ beep(880,0.05,'square',0.1); beep(1320,0.06,'square',0.08,0.05); },
+  bell(){ beep(1568,0.1,'square',0.14); beep(1568,0.12,'square',0.12,0.16); },
+  tick(){ beep(440,0.05,'square',0.1); },
+  go(){ beep(880,0.3,'sawtooth',0.14); },
+  fanfare(){ [523,659,784,1046].forEach((f,i)=>beep(f,0.16,'square',0.13,i*0.13)); },
+  cash(){ [988,1318,1568].forEach((f,i)=>beep(f,0.09,'square',0.14,i*0.07)); },
+  lose(){ beep(220,0.25,'sawtooth',0.1); beep(175,0.3,'sawtooth',0.1,0.18); }
+};
+
+// ---------- horse pool ----------
+const POOL = [
+  {name:'火焰小子', coat:'#a26d3f', dark:'#6e4522', style:'front'},
+  {name:'黑旋风',   coat:'#3b3c4f', dark:'#22232f', style:'close'},
+  {name:'追风',     coat:'#c98a4b', dark:'#8a5a2b', style:'front'},
+  {name:'铁蹄将军', coat:'#7a4a32', dark:'#4e2e1e', style:'pace'},
+  {name:'闪电',     coat:'#e8d9b0', dark:'#b09a6a', style:'close'},
+  {name:'夜神月',   coat:'#2e3040', dark:'#1b1c28', style:'pace'},
+  {name:'金毛狮王', coat:'#d9a441', dark:'#9a712a', style:'front'},
+  {name:'白玉麒麟', coat:'#e8e8e8', dark:'#a8a8a8', style:'pace'},
+  {name:'赤兔',     coat:'#b13e53', dark:'#7a2838', style:'front'},
+  {name:'乌云踏雪', coat:'#4a4a58', dark:'#2c2c36', style:'close'},
+  {name:'小钢炮',   coat:'#c96f3a', dark:'#8a4a24', style:'front'},
+  {name:'草原之王', coat:'#8a6a3a', dark:'#5c4626', style:'close'}
+];
+const SILKS = ['#ef5d66','#4d9be6','#63c74d','#ffcd75','#d057d8','#f2854d'];
+const STYLE_TAG = {front:'前置', pace:'跟随', close:'后追'};
+const MARGIN = 0.10;
+
+// ---------- race model ----------
+let field = [];      // horses in current race
+let raceNo = LS.get('raceNo', 1);
+let tickets = [];    // {hIdx, type:'W'|'P', amt, odds}
+let betType = 'W';
+let stake = 50;
+let phase = 'bet';   // bet | countdown | race | result
+let racePlan = null; // per-horse finishT + progress curves
+let raceT0 = 0, raceT = 0, msgAt = {};
+let photoFinish = false, ts = 1; // ts: timescale (test hook)
+let dust = [];
+
+function makeField(){
+  const pool = shuffle(POOL).slice(0,6);
+  const silks = shuffle(SILKS);
+  const abil = pool.map(h=> h.baseAbil !== undefined ? h.baseAbil : rnd(-1,1));
+  const pw = softmax(abil.map(a=>a*1.5));
+  // place probabilities via Monte-Carlo Plackett-Luce
+  const N=1400, plc = new Array(6).fill(0);
+  for(let n=0;n<N;n++){
+    const rk = sampleRanking(pw);
+    for(let i=0;i<3;i++) plc[rk[i]]++;
+  }
+  const ppl = plc.map((c,i)=> clamp(c/N, pw[i]*1.05, 0.92));
+  field = pool.map((h,i)=>({
+    ...h, idx:i, silk:silks[i],
+    pw: pw[i], ppl: ppl[i],
+    winOdds:  oddsOf(pw[i], 0),
+    placeOdds:oddsOf(ppl[i], 1)
+  }));
+  field.forEach(h=>{ const s=[...field].sort((a,b)=>b.pw-a.pw); h.stars = Math.max(1, 5 - s.indexOf(h)); });
+  renderBoard();
+}
+function oddsOf(p, kind){
+  const noise = rnd(-0.12, 0.12);
+  const m = kind? MARGIN*1.15 : MARGIN;
+  let o = (1/p) * (1-m) * (1+noise);
+  o = Math.max(kind?1.1:1.2, o);
+  o = o >= 10 ? Math.round(o) : Math.round(o*10)/10;
+  return o;
+}
+// Plackett-Luce: sample full ranking given win-strength weights
+// rem holds {v, i} pairs so ORIGINAL horse indices survive splicing
+function sampleRanking(w){
+  const rem = w.map((v,i)=>({v,i})), rk=[];
+  while(rem.length){
+    const s = rem.reduce((p,c)=>p+c.v,0);
+    let x = Math.random()*s;
+    for(let k=0;k<rem.length;k++){ x -= rem[k].v; if(x<=0){ rk.push(rem[k].i); rem.splice(k,1); break; } }
+  }
+  return rk;
+}
+
+// build animation plan for a known ranking
+function buildPlan(){
+  const rk = sampleRanking(field.map(h=>h.pw));       // rk[0] = winner idx
+  const T = rnd(12.5, 15);
+  const finishT = new Array(6);
+  rk.forEach((hIdx, r)=>{ finishT[hIdx] = T * (1 + 0.055*r + rnd(0,0.035)); });
+  photoFinish = (finishT[rk[1]] - finishT[rk[0]]) < 0.12;
+  const K = 240, curves = [];
+  for(let i=0;i<6;i++){
+    const style = field[i].style;
+    const a = style==='front'?1.20 : style==='close'?0.80 : 1.0;
+    const b = style==='front'?0.80 : style==='close'?1.20 : 1.0;
+    const vs = [];
+    for(let k=0;k<K;k++){
+      let v = Math.abs(rnd(1,1)===1?1: (Math.random()+Math.random()+Math.random())/1.5); // ~bell around 1
+      v *= a + (b-a)*(k/K);
+      vs.push(Math.max(0.15, v));
+    }
+    const s = vs.reduce((p,c)=>p+c,0);
+    let acc=0; const cum = vs.map(v=>{ acc+=v/s; return acc; });
+    cum[K-1]=1;
+    curves.push(cum);
+  }
+  const ranking = rk.slice();
+  racePlan = {finishT, curves, ranking, K};
+  return racePlan;
+}
+function progressAt(hIdx, t){
+  const {finishT, curves, K} = racePlan;
+  const frac = clamp(t/finishT[hIdx], 0, 1);
+  const x = frac*(K-1), i = Math.floor(x), f = x-i;
+  const c = curves[hIdx];
+  return i>=K-1 ? 1 : c[i]*(1-f)+c[i+1]*f;
+}
+
+// ---------- pixel horse sprites ----------
+function buildHorseFrame(f, coat, dark, silk){
+  const cv = document.createElement('canvas'); cv.width=22; cv.height=15;
+  const c = cv.getContext('2d');
+  const P=(x,y,col)=>{ c.fillStyle=col; c.fillRect(x,y,1,1); };
+  const R=(x,y,w,h,col)=>{ c.fillStyle=col; c.fillRect(x,y,w,h); };
+  const bob = (f===1||f===3)?1:0, yb=bob;
+  // tail
+  P(3,5+yb,dark); P(2,4+yb,dark); P(1,4+yb,dark);
+  if(f===0||f===2){ P(1,5+yb,dark); }
+  // body
+  R(4,5+yb,11,4,coat);
+  R(5,8+yb,9,1,dark);            // belly shade
+  // neck + head
+  R(14,4+yb,2,2,coat);
+  R(15,2+yb,4,2,coat);
+  R(18,3+yb,1,1,dark);           // muzzle
+  P(17,2+yb,'#111');             // eye
+  P(15,1+yb,dark);               // ear
+  // saddle cloth (silk color)
+  R(8,4+yb,4,1,silk);
+  // jockey (crouched)
+  R(7,2+yb,3,2,silk);            // torso
+  P(10,2+yb,'#e8b796');          // face
+  R(6,1+yb,2,1,'#f4f0e8'); P(6,2+yb,'#f4f0e8'); // helmet
+  P(10,3+yb,silk);               // arm forward
+  // legs: [hindA, hindB, frontA, frontB] hoof offsets per frame
+  const LEG = [
+    [[-4,3],[-3,4],[4,3],[5,4]],
+    [[0,4],[-1,5],[1,5],[2,4]],
+    [[3,3],[2,4],[-1,4],[0,5]],
+    [[-2,5],[-1,4],[3,4],[4,3]]
+  ];
+  const anchors = [[6,9+yb],[8,9+yb],[13,9+yb],[14,9+yb]];
+  LEG[f].forEach((d,li)=>{
+    const [ax,ay]=anchors[li], [dx,dy]=d;
+    const steps = Math.max(Math.abs(dx), Math.abs(dy), 1);
+    for(let s=0;s<=steps;s++){
+      const x = Math.round(ax + dx*s/steps), y = Math.round(ay + dy*s/steps);
+      P(x,y,dark); P(x+1,y,dark);
+    }
+    const ex=ax+dx, ey=ay+dy; P(ex,ey,'#111'); P(ex+1,ey,'#111'); // hoof
+  });
+  return cv;
+}
+const spriteCache = {};
+function horseSprite(h, f){
+  const key = h.idx+':'+f+':'+h.coat+':'+h.silk;
+  if(!spriteCache[key]) spriteCache[key] = buildHorseFrame(f, h.coat, h.dark, h.silk);
+  return spriteCache[key];
+}
+
+// ---------- canvas scene ----------
+const cvs = $('#cv'), ctx = cvs.getContext('2d');
+ctx.imageSmoothingEnabled = false;
+const W = cvs.width, H = cvs.height;
+const TRACK_TOP = 128, LANES = 6, LANE_H = (H-TRACK_TOP-4)/LANES;
+const X0 = 46, FINISH_X = W-84, SPRITE_SC = 4, SPR_W = 22*SPRITE_SC;
+
+// pre-render static background
+const bg = document.createElement('canvas'); bg.width=W; bg.height=H;
+(function paintBG(){
+  const b = bg.getContext('2d');
+  // sky
+  b.fillStyle='#7bd1e8'; b.fillRect(0,0,W,70);
+  // sun
+  b.fillStyle='#fff3b0'; b.fillRect(W-90,12,26,26);
+  // stands
+  b.fillStyle='#34395a'; b.fillRect(0,40,W,44);
+  b.fillStyle='#232741'; b.fillRect(0,84,W,10);
+  // crowd dots
+  for(let y=48;y<80;y+=6){
+    for(let x=6;x<W;x+=8){
+      const c = ['#ef5d66','#ffcd75','#63c74d','#4d9be6','#d057d8','#f4f0e8'][((x/8+y)|0)%6];
+      b.fillStyle=c; b.fillRect(x+((y/6)%2)*4, y, 3, 4);
+    }
+  }
+  // rail fence
+  b.fillStyle='#8b90b3'; b.fillRect(0,94,W,4);
+  for(let x=0;x<W;x+=26){ b.fillStyle='#5c6183'; b.fillRect(x,94,3,18); }
+  b.fillStyle='#8b90b3'; b.fillRect(0,110,W,3);
+  // grass + lanes
+  for(let i=0;i<LANES;i++){
+    const y = TRACK_TOP + i*LANE_H;
+    b.fillStyle = i%2? '#4f9e4a':'#459142';
+    b.fillRect(0,y,W,LANE_H);
+    b.fillStyle='#3a7a36'; b.fillRect(0,y+LANE_H-2,W,2);
+  }
+  // start gate
+  b.fillStyle='#2a2e45'; b.fillRect(X0-14,TRACK_TOP,6,H-TRACK_TOP);
+  b.fillStyle='#f4f0e8'; b.fillRect(X0-16,TRACK_TOP,2,H-TRACK_TOP);
+  // furlong markers
+  for(let m=1;m<=4;m++){
+    const x = X0 + (FINISH_X-X0)*m/5;
+    b.fillStyle='rgba(255,255,255,.35)'; b.fillRect(x,TRACK_TOP,2,H-TRACK_TOP);
+  }
+  // finish post + line
+  b.fillStyle='#0c0d1a'; b.fillRect(FINISH_X+SPR_W+8,TRACK_TOP-6,4,H-TRACK_TOP+6);
+  for(let y=TRACK_TOP;y<H;y+=8){
+    for(let k=0;k<2;k++){
+      b.fillStyle = (((y/8)|0)+k)%2? '#0c0d1a':'#f4f0e8';
+      b.fillRect(FINISH_X+SPR_W+12, y+k*4, 8, 4);
+    }
+  }
+})();
+
+function drawRace(t){
+  ctx.drawImage(bg,0,0);
+  const running = phase==='race';
+  // dust particles
+  dust = dust.filter(d=>d.life>0);
+  dust.forEach(d=>{
+    ctx.fillStyle=`rgba(214,196,150,${d.life})`;
+    ctx.fillRect(d.x|0, d.y|0, d.s, d.s);
+    d.x-=d.vx; d.y+=d.vy; d.life-=0.03;
+  });
+  for(let i=0;i<6;i++){
+    const h = field[i];
+    const laneY = TRACK_TOP + i*LANE_H + (LANE_H - 15*SPRITE_SC)/2;
+    let prog = 0;
+    if(phase==='race') prog = progressAt(i, t);
+    else if(phase==='finishwait' || phase==='result') prog = 1;
+    const x = X0 + prog*(FINISH_X - X0);
+    const fr = running? (Math.floor(t*9)+i)%4 : 0;
+    const y = laneY + ((fr===1||fr===3)?-2:0);
+    ctx.drawImage(horseSprite(h, fr), x|0, y|0, 22*SPRITE_SC, 15*SPRITE_SC);
+    // dust while running
+    if(running && prog>0.01 && prog<0.995 && Math.random()<0.25){
+      dust.push({x:x+rndi(0,14), y:y+56+rndi(0,6), s:rndi(3,7), vx:rnd(0.5,1.5), vy:rnd(-0.2,0.3), life:rnd(0.3,0.55)});
+    }
+    // number tag above
+    ctx.fillStyle='#0c0d1a'; ctx.fillRect(x|0, y-13, 16, 12);
+    ctx.fillStyle=h.silk;    ctx.fillRect((x|0)+1, y-12, 14, 10);
+    ctx.fillStyle='#fff'; ctx.font='bold 8px monospace'; ctx.textAlign='center';
+    ctx.fillText(String(i+1), (x|0)+8, y-3);
+  }
+}
+
+// ---------- DOM: board / tickets ----------
+function renderBoard(){
+  const bd = $('#board'); bd.innerHTML='';
+  field.forEach(h=>{
+    const d = document.createElement('div');
+    d.className='hcard'; d.dataset.idx=h.idx;
+    const stakeOn = tickets.filter(t=>t.hIdx===h.idx).reduce((p,c)=>p+c.amt,0);
+    if(stakeOn>0) d.classList.add('hasbet');
+    d.innerHTML = `
+      <div class="betmark">注${fmt(stakeOn)}</div>
+      <div class="r1">
+        <div class="cap" style="background:${h.silk}">${h.idx+1}</div>
+        <div class="nm">${h.name}</div>
+      </div>
+      <div class="r2">
+        <span class="wodds num">${h.winOdds.toFixed(1)}</span>
+        <span class="podds num">位 ${h.placeOdds.toFixed(1)}</span>
+      </div>
+      <div class="r3">
+        <span class="stars">${'★'.repeat(h.stars)}${'☆'.repeat(5-h.stars)}</span>
+        <span class="tag">${STYLE_TAG[h.style]}</span>
+      </div>`;
+    d.addEventListener('click', ()=> onCardTap(h.idx));
+    bd.appendChild(d);
+  });
+  updateDole();
+}
+function onCardTap(idx){
+  if(phase!=='bet'){ toast('比赛中不能下注'); return; }
+  const amt = stake==='max' ? bank : stake;
+  if(amt<=0 || bank<10){ toast('余额不足'); updateDole(); return; }
+  const real = Math.min(amt, bank);
+  if(real<10){ toast('最低下注 10'); return; }
+  const h = field[idx];
+  const odds = betType==='W'? h.winOdds : h.placeOdds;
+  tickets.push({hIdx:idx, type:betType, amt:real, odds});
+  bank -= real; saveBank();
+  sfx.chip(); renderTickets(); renderBoard();
+}
+function renderTickets(){
+  const tk = $('#tickets'); tk.innerHTML='';
+  tickets.forEach((t,i)=>{
+    const h = field[t.hIdx];
+    const d = document.createElement('div'); d.className='tk';
+    d.innerHTML = `<span class="tt ${t.type}">${t.type==='W'?'独赢':'位置'}</span>
+      <span style="color:${h.silk}">■</span> ${h.name}
+      <span class="num">@${t.odds.toFixed(1)}</span>
+      <span class="amt num">-${t.amt}</span>
+      <button class="x" data-i="${i}">✕</button>`;
+    d.querySelector('.x').addEventListener('click', e=>{
+      if(phase!=='bet') return;
+      const i2 = +e.target.dataset.i; const t2 = tickets[i2];
+      bank += t2.amt; saveBank();
+      tickets.splice(i2,1); sfx.click(); renderTickets(); renderBoard();
+    });
+    tk.appendChild(d);
+  });
+  const total = tickets.reduce((p,c)=>p+c.amt,0);
+  const go = $('#go');
+  if(phase==='bet'){
+    go.disabled = tickets.length===0;
+    go.textContent = total>0 ? `開 跑 · 总注 ${fmt(total)}` : '開 跑';
+  }
+}
+function saveBank(){ $('#bankVal').textContent = fmt(bank); LS.set('bank', bank); }
+function updateDole(){
+  $('#doleBtn').style.display = (phase==='bet' && bank<10 && tickets.length===0)? 'block':'none';
+}
+let toastTimer=null;
+function toast(msg){
+  const t=$('#toast'); t.textContent=msg; t.style.opacity=1;
+  clearTimeout(toastTimer); toastTimer=setTimeout(()=>t.style.opacity=0, 1400);
+}
+
+// ---------- countdown & race ----------
+function startRace(){
+  if(phase!=='bet' || tickets.length===0) return;
+  buildPlan();
+  phase='countdown';
+  document.querySelectorAll('.hcard').forEach(c=>c.style.pointerEvents='none');
+  $('#go').disabled = true; $('#go').textContent='比赛中…';
+  $('#cover').style.display='block';
+  $('#doleBtn').style.display='none';
+  let n=3;
+  const cd=$('#countdown'); cd.style.display='flex';
+  sfx.tick();
+  const iv = setInterval(()=>{
+    n--;
+    if(n>0){ cd.textContent=n; sfx.tick(); }
+    else{
+      clearInterval(iv);
+      cd.textContent='開閘!'; sfx.bell(); sfx.go();
+      if(navigator.vibrate) navigator.vibrate(30);
+      setTimeout(()=>{ cd.style.display='none'; beginRun(); }, 550/ts);
+    }
+    cd.textContent = n>0? n : '開閘!';
+  }, 800/ts);
+}
+function beginRun(){
+  phase='race'; raceT0=performance.now(); raceT=0;
+  msgAt = {0.3:false, 0.62:false, 0.86:false};
+  $('#liveBar').style.display='flex';
+  sfx.fanfare;
+}
+function raceMsg(txt, ms=1100){
+  const m=$('#raceMsg'); m.textContent=txt; m.style.opacity=1;
+  clearTimeout(m._t); m._t=setTimeout(()=>m.style.opacity=0, ms/ts);
+}
+function liveTick(t){
+  const order = field.map((h,i)=>({i, p:progressAt(i,t)})).sort((a,b)=>b.p-a.p);
+  const lb=$('#liveBar');
+  lb.innerHTML = order.map((o,r)=>`<span class="lb"><b>${r+1}</b><i style="background:${field[o.i].silk}"></i>${field[o.i].name}</span>`).join('');
+  // narrative banners
+  const lead = progressAt(order[0].i, t);
+  const rel = t / Math.max(...racePlan.finishT);
+  if(rel>0.3 && !msgAt[0.3]){ msgAt[0.3]=true; raceMsg(`「${field[order[0].i].name}」带头!`); }
+  if(rel>0.62 && !msgAt[0.62]){ msgAt[0.62]=true; raceMsg('後方马匹开始发力!'); }
+  if(rel>0.86 && !msgAt[0.86]){ msgAt[0.86]=true; raceMsg('最後直路!!'); }
+}
+
+// ---------- settle ----------
+function settleRace(){
+  phase='result';
+  $('#liveBar').style.display='none';
+  const rk = racePlan.ranking;             // rk[r] = horse idx at place r+1
+  const rankOf = []; rk.forEach((h,r)=>rankOf[h]=r);
+  const t1 = racePlan.finishT[rk[0]], t2 = racePlan.finishT[rk[1]];
+  let payout=0;
+  const rows = tickets.map(t=>{
+    const r = rankOf[t.hIdx];
+    const win = t.type==='W'? r===0 : r<3;
+    const pay = win? Math.round(t.amt*t.odds) : 0;
+    payout += pay;
+    if(win && pay-t.amt > stats.biggestWin) stats.biggestWin = pay-t.amt;
+    return {...t, r, pay};
+  });
+  bank += payout; saveBank();
+  stats.races++; stats.staked += tickets.reduce((p,c)=>p+c.amt,0);
+  stats.returned += payout; stats.tickets += tickets.length;
+  stats.paidTickets += rows.filter(r=>r.pay>0).length;
+  stats.curve.push(bank); if(stats.curve.length>160) stats.curve.shift();
+  LS.set('stats', stats); LS.set('raceNo', raceNo+1);
+
+  sfx.fanfare();
+  if(payout>0){ setTimeout(()=>sfx.cash(), 700); if(navigator.vibrate) navigator.vibrate([40,60,40]); }
+  else setTimeout(()=>sfx.lose(), 700);
+
+  // render modal
+  $('#resTitle').textContent = photoFinish? '📸 同場影相!' : '🏁 赛 果';
+  $('#ranks').innerHTML = rk.map((h,r)=>{
+    const hh=field[h];
+    const gap = r===0? '冠军' : `+${((racePlan.finishT[h]-t1)).toFixed(2)}秒`;
+    return `<div class="rk ${r===0?'first':''}">
+      <span class="pos">${r+1}</span>
+      <span class="cap" style="background:${hh.silk}"></span>
+      <span>${hh.name}</span>
+      <span class="gap num">${gap}</span></div>`;
+  }).join('');
+  $('#settle').innerHTML = rows.length? rows.map(t2r=>{
+    const hh=field[t2r.hIdx];
+    return `<div class="stk">
+      <span class="tt ${t2r.type}" style="font-size:10px;font-weight:900;padding:1px 4px;border:1px solid var(--border);color:${t2r.type==='W'?'var(--gold)':'var(--blue)'}">${t2r.type==='W'?'独赢':'位置'}</span>
+      <span>${hh.name} · ${fmt(t2r.amt)}@${t2r.odds.toFixed(1)}</span>
+      <span class="res ${t2r.pay>0?'win':'lose'}">${t2r.pay>0? '+'+fmt(t2r.pay) : '✗'}</span></div>`;
+  }).join('') : '<div class="stk" style="color:var(--dim)">本场无注单</div>';
+  const stakeTot = tickets.reduce((p,c)=>p+c.amt,0);
+  const net = payout - stakeTot;
+  const nr=$('#netRow');
+  nr.className = 'net ' + (net>0?'pos':net<0?'neg':'zero');
+  nr.innerHTML = `本場净额 <b class="num">${net>0?'+':''}${fmt(net)}</b><br><span style="font-size:12px;color:var(--dim)">余额 💰${fmt(bank)}</span>`;
+  $('#resultModal').classList.add('show');
+  tickets = []; renderTickets(); renderBoard();
+}
+
+// ---------- main loop ----------
+function loop(now){
+  if(phase==='race'){
+    raceT = (now - raceT0)/1000*ts;
+    const maxT = Math.max(...racePlan.finishT);
+    if(photoFinish && raceT > maxT*0.93 && raceT < maxT*1.02){
+      // slow-mo drama at tight finishes
+      raceT = maxT*0.93 + (raceT - maxT*0.93)*0.35;
+    }
+    liveTick(Math.min(raceT, maxT));
+    drawRace(Math.min(raceT, maxT+0.4));
+    if(raceT > maxT + 0.5){
+      drawRace(maxT+2); raceMsg(photoFinish? '影相判定中…':'終點!', 800);
+      setTimeout(settleRace, photoFinish? 900 : 350);
+      phase='finishwait';
+    }
+  } else if(phase==='result' || phase==='finishwait'){
+    drawRace(1e9);
+  } else {
+    drawRace(0);
+  }
+  requestAnimationFrame(loop);
+}
+
+// ---------- stats modal ----------
+function showStats(){
+  const g=$('#statGrid');
+  const roi = stats.staked>0? ((stats.returned-stats.staked)/stats.staked*100) : 0;
+  const hit = stats.tickets>0? (stats.paidTickets/stats.tickets*100) : 0;
+  g.innerHTML = `
+    <div><span>参加场次</span><b class="num">${stats.races}</b></div>
+    <div><span>总投注额</span><b class="num">${fmt(stats.staked)}</b></div>
+    <div><span>总派彩</span><b class="num">${fmt(stats.returned)}</b></div>
+    <div><span>实际 ROI</span><b class="num" style="color:${roi>=0?'var(--green)':'var(--red)'}">${roi>=0?'+':''}${roi.toFixed(1)}%</b></div>
+    <div><span>注单命中率</span><b class="num">${hit.toFixed(1)}%</b></div>
+    <div><span>最大单笔盈利</span><b class="num" style="color:var(--green)">+${fmt(stats.biggestWin)}</b></div>
+    <div><span>领低保次数</span><b class="num">${stats.dole}</b></div>
+    <div><span>当前余额</span><b class="num" style="color:var(--gold)">${fmt(bank)}</b></div>`;
+  const sc=$('#spark'), c=sc.getContext('2d');
+  c.fillStyle='#2d3252'; c.fillRect(0,0,sc.width,sc.height);
+  const cv2=stats.curve; if(cv2.length>1){
+    const mn=Math.min(...cv2), mx=Math.max(...cv2), rg=Math.max(1,mx-mn);
+    c.strokeStyle='#ffcd75'; c.lineWidth=2; c.beginPath();
+    cv2.forEach((v,i)=>{
+      const x=i/(cv2.length-1)*(sc.width-8)+4;
+      const y=sc.height-6-((v-mn)/rg)*(sc.height-14);
+      i? c.lineTo(x,y): c.moveTo(x,y);
+    });
+    c.stroke();
+    c.fillStyle='#8b90b3'; c.font='10px monospace';
+    c.fillText('资金曲线 '+fmt(mn)+'~'+fmt(mx), 6, 12);
+  } else { c.fillStyle='#8b90b3'; c.font='10px monospace'; c.fillText('资金曲线：先去跑一场', 8, 34); }
+  $('#statsModal').classList.add('show');
+}
+
+// ---------- wire up ----------
+$('#typeW').addEventListener('click',()=>{ betType='W'; $('#typeW').classList.add('on'); $('#typeP').classList.remove('on'); sfx.click(); });
+$('#typeP').addEventListener('click',()=>{ betType='P'; $('#typeP').classList.add('on'); $('#typeW').classList.remove('on'); sfx.click(); });
+document.querySelectorAll('.chip').forEach(ch=>{
+  ch.addEventListener('click',()=>{
+    document.querySelectorAll('.chip').forEach(x=>x.classList.remove('on'));
+    ch.classList.add('on');
+    stake = ch.dataset.v==='max'? 'max' : +ch.dataset.v;
+    sfx.click();
+  });
+});
+$('#go').addEventListener('click', startRace);
+$('#nextBtn').addEventListener('click',()=>{
+  $('#resultModal').classList.remove('show');
+  $('#cover').style.display='none';
+  phase='bet'; raceNo++;
+  document.querySelectorAll('.hcard').forEach(c=>c.style.pointerEvents='');
+  makeField(); renderTickets(); saveBank();
+  updateRaceTag();
+});
+function updateRaceTag(){ $('#raceNoTag').textContent = 'R'+raceNo; }
+$('#statsBtn').addEventListener('click', showStats);
+$('#closeStats').addEventListener('click',()=> $('#statsModal').classList.remove('show'));
+$('#soundBtn').addEventListener('click',()=>{
+  soundOn=!soundOn; LS.set('sound',soundOn);
+  $('#soundBtn').textContent = soundOn? '🔊':'🔇';
+  if(soundOn) sfx.click();
+});
+$('#resetBtn').addEventListener('click',()=>{
+  if(!confirm('清空余额、战绩并重开？')) return;
+  bank=1000; stats={races:0,staked:0,returned:0,paidTickets:0,tickets:0,biggestWin:0,dole:0,curve:[1000]};
+  tickets=[]; raceNo=1;
+  LS.set('bank',bank); LS.set('stats',stats); LS.set('raceNo',1);
+  makeField(); renderTickets(); saveBank();
+  $('#statsModal').classList.remove('show');
+  toast('已重置');
+});
+$('#doleBtn').addEventListener('click',()=>{
+  bank+=200; stats.dole++; LS.set('stats',stats);
+  saveBank(); updateDole(); sfx.cash();
+  toast('低保 +200，回头是岸');
+});
+document.addEventListener('pointerdown', ()=>{ ac(); }, {once:true});
+
+// ---------- boot ----------
+$('#soundBtn').textContent = soundOn? '🔊':'🔇';
+saveBank();
+updateRaceTag();
+makeField();
+renderTickets();
+requestAnimationFrame(loop);
+
+// ---------- test hooks (dev) ----------
+window.__test = {
+  get field(){return field;}, get tickets(){return tickets;}, get bank(){return bank;},
+  get phase(){return phase;}, get plan(){return racePlan;}, get stats(){return stats;},
+  setTS(v){ts=v;}, setBank(v){bank=v; saveBank();},
+  place(hIdx, type, amt){ betType=type; tickets.push({hIdx,type:'W',amt,odds:type==='W'?field[hIdx].winOdds:field[hIdx].placeOdds}); if(tickets[tickets.length-1].type!==type)tickets[tickets.length-1].type=type; },
+  clearTickets(){ tickets=[]; },
+  start: startRace, makeField, buildPlan, sampleRanking,
+  settleNow(){ if(phase==='race'||phase==='countdown'){ phase='race'; raceT0 = performance.now() - (Math.max(...racePlan.finishT)+1)*1000/ts; } },
+  MC(n){ // monte-carlo calibration
+    let favWins=0, roiSum=0, overSum=0;
+    for(let it=0; it<n; it++){
+      makeField();
+      overSum += field.reduce((p,h)=>p+1/h.winOdds,0);
+      const f = field.reduce((a,b)=> a.winOdds<b.winOdds? a:b);
+      const rk = sampleRanking(field.map(h=>h.pw));
+      if(rk[0]===f.idx) favWins++;
+      const h = field[rndi(0,5)];
+      const win = rk.indexOf(h.idx)===0;
+      roiSum += (win? h.winOdds : 0) - 1;
+    }
+    return {favWinRate: favWins/n, randomBetROI: roiSum/n, avgOverround: overSum/n};
+  }
+};
+</script>
+</body>
+</html>
