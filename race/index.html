@@ -554,8 +554,8 @@ function lanePoint(i, u){
   return { x: a.x+(b.x-a.x)*f, y: a.y+(b.y-a.y)*f, dx: a.dx+(b.dx-a.dx)*f };
 }
 
-// ---------- perspective camera (view from the grandstand 2nd floor) ----------
-const CAMX=CX, CAMY=700, KF=300, VPER=92000, HOR=96;
+// ---------- perspective camera (raised: more top-down, far straight reads larger) ----------
+const CAMX=CX, CAMY=880, KF=300, VPER=132000, HOR=88;
 function project(x,y){
   const d = CAMY - y;              // depth from camera
   const s = KF/d;                  // perspective scale
@@ -576,15 +576,18 @@ function liftF(x, y){
   const dx2 = Math.abs(x - CX);
   return clamp((dx2 - 120) / 160, 0, 1);       // near straight: fade toward center
 }
-// seats on three tiers along the footprint (live-animated)
+// seats: EVERY tier row packed along the whole footprint
 const standSeats=[];
 (function buildStandSeats(){
-  const cols=['#ef5d66','#ffcd75','#63c74d','#4d9be6','#d057d8','#f4f0e8','#e88c5a'];
+  const cols=['#ef5d66','#ffcd75','#63c74d','#4d9be6','#d057d8','#f4f0e8','#e88c5a','#7bd1e8'];
+  // 4 rows of seats climbing the stand slope; heights match tier strips (14/28/42/56)
+  const rows=[{lift:12, f:0.16}, {lift:24, f:0.42}, {lift:36, f:0.66}, {lift:50, f:0.90}];
   standBase.forEach((p,i)=>{
-    if(i%2) return;
-    if(liftF(p.x,p.y) < 0.2) return;           // no seats where the stand is faded
-    [0.35,0.62,0.88].forEach(f=>{
-      standSeats.push({wx:p.x, wy:p.y, f, color:cols[rndi(0,cols.length-1)], phase:Math.random()*Math.PI*2});
+    if(liftF(p.x,p.y) < 0.2) return;
+    rows.forEach((r,ri)=>{
+      standSeats.push({wx:p.x, wy:p.y, lift:r.lift, f:r.f,
+                       color:cols[rndi(0,cols.length-1)], phase:Math.random()*Math.PI*2,
+                       jitter:(ri%2)?1.5:0});
     });
   });
 })();
@@ -750,20 +753,20 @@ function drawLiveScene(t){
   const excited = phase==='race' || phase==='countdown';
   const now = performance.now()/1000;
   const bobAmt = excited? 2.5 : 0.8;
-  // seats on the surrounding grandstand; skip the faded center-front gap
+  // seats on every tier row, packed along the whole bowl
   for(let i=0;i<standSeats.length;i++){
     const p = standSeats[i];
     const s = project(p.wx, p.wy);
     if(s.y < HOR+8) continue;
     if(s.y > H-20) continue;                  // behind our own railing
     const f = 0.5 + s.s;
-    const tierY = s.y - (12 + p.f*34)*f;
+    const tierY = s.y - (p.lift + p.f*8)*f;
     const y = tierY + Math.sin(now*4 + p.phase)*bobAmt*Math.max(.5,s.s*2);
     const w2 = Math.max(2, 5*s.s*2), h2 = Math.max(3, 6*s.s*2);
     ctx.fillStyle=p.color;
-    ctx.fillRect(s.x-w2/2, y, w2, h2);
+    ctx.fillRect(s.x-w2/2+p.jitter, y, w2, h2);
     ctx.fillStyle='#e8b796';
-    ctx.fillRect(s.x-w2/2, y-h2*0.6, w2*0.7, h2*0.6);
+    ctx.fillRect(s.x-w2/2+p.jitter, y-h2*0.6, w2*0.7, h2*0.6);
   }
   // our side rail stays as the foreground frame
   ctx.fillStyle='#8b90b3'; ctx.fillRect(0, H-14, W, 4);
