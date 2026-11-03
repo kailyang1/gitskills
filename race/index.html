@@ -904,6 +904,54 @@ function drawConfetti(dt){
 }
 
 
+// lateral racing positions: 0 = own lane; negative = toward the rail, positive = swung out
+// (unrestricted racing after the start — overtaking only on the OUTSIDE)
+let lat = [0,0,0,0,0,0];
+let latBias = [0,0,0,0,0,0];
+function horsePos(i, u){
+  const p = lanePoint(i, u);
+  const p2 = lanePoint(i, Math.min(u+0.004, 1+PULLUP*2));
+  let tx=p2.x-p.x, ty=p2.y-p.y;
+  const tl=Math.hypot(tx,ty)||1; tx/=tl; ty/=tl;
+  let nx=p.x-CX, ny=p.y-CY;                    // radial normal (outward)
+  const nl=Math.hypot(nx,ny)||1; nx/=nl; ny/=nl;
+  return { x: p.x+nx*lat[i], y: p.y+ny*lat[i], tx, ty };
+}
+function updateLanes(dt){
+  const P=[];
+  for(let i=0;i<6;i++){
+    const u = progressAt(i, raceT);
+    if(u < 0.07){ lat[i]=0; }                  // gate phase: stay in stalls
+    P.push(horsePos(i, Math.min(u,1e9)));
+  }
+  const rate = 9;                              // lateral swing speed (units/s)
+  for(let i=0;i<6;i++){
+    const u = progressAt(i, raceT);
+    if(u < 0.07) continue;
+    const a = P[i];
+    const latMin = bndR(LANES)+7 - laneR(i);   // hug the rail at most
+    const latMax = bndR(0)-7   - laneR(i);     // never off the outer edge
+    const radA = laneR(i) + lat[i];
+    // resting desire: drift toward the rail (bias varies per horse per race)
+    let target = latMin*(0.55 - latBias[i]*0.35);
+    for(let j=0;j<6;j++){
+      if(j===i) continue;
+      const b=P[j];
+      const ex=b.x-a.x, ey=b.y-a.y;
+      const fwd = ex*a.tx + ey*a.ty;           // ahead along my heading
+      const side = -ex*a.ty + ey*a.tx;         // lateral offset
+      if(fwd>4 && fwd<52 && Math.abs(side)<15){
+        const radB = laneR(j) + lat[j];
+        if(radB <= radA + 3){                  // blocker at/inside my line
+          target = Math.max(target, (radB+16) - laneR(i));   // swing outside it
+        }
+      }
+    }
+    target = clamp(target, latMin, latMax);
+    lat[i] += clamp(target-lat[i], -rate*dt, rate*dt);
+  }
+}
+
 let lastFrame = performance.now();
 function drawRace(t, dt){
   ctx.save();
@@ -922,7 +970,8 @@ function drawRace(t, dt){
     ctx.fillRect(d.x|0, d.y|0, d.s, d.s);
     d.x-=d.vx; d.y+=d.vy; d.life-=0.03;
   });
-  // gather horses with projection + travel direction (for turning)
+  // gather horses with projection + travel direction (lateral racing enabled)
+  if(running) updateLanes(dt||0.016);
   const order = [];
   for(let i=0;i<6;i++){
     let prog = 0;
@@ -930,11 +979,9 @@ function drawRace(t, dt){
     else if(phase==='finishwait' || phase==='result') prog = 1.04;
     else prog = 0.003;
     const u = Math.min(prog, 1+PULLUP*2);
-    const p = lanePoint(i, u);
-    const p2 = lanePoint(i, Math.min(u+0.004, 1+PULLUP*2));
-    const dlen = Math.hypot(p2.x-p.x, p2.y-p.y)||1;
+    const p = horsePos(i, u);
     const scr = project(p.x, p.y);
-    order.push({i, prog, scr, nx:(p2.x-p.x)/dlen, ny:(p2.y-p.y)/dlen});
+    order.push({i, prog, scr, nx:p.tx, ny:p.ty});
   }
   order.sort((a,b)=>a.scr.d-b.scr.d);        // farthest first
   order.forEach(o=>{
@@ -1088,6 +1135,8 @@ function beginRun(){
   phase='race'; raceT0=performance.now(); raceT=0;
   msgAt = {0.3:false, 0.62:false, 0.86:false};
   shake = 9;                    // gate-burst camera shake
+  lat = [0,0,0,0,0,0];          // everyone starts in their own stall
+  latBias = field.map(()=> rnd(-1, 0.4));   // rail-hugger … wide-drifter
   $('#liveBar').style.display='flex';
 }
 function raceMsg(txt, ms=1100){
