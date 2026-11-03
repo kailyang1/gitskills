@@ -554,8 +554,8 @@ function lanePoint(i, u){
   return { x: a.x+(b.x-a.x)*f, y: a.y+(b.y-a.y)*f, dx: a.dx+(b.dx-a.dx)*f };
 }
 
-// ---------- perspective camera (raised: more top-down, far straight reads larger) ----------
-const CAMX=CX, CAMY=880, KF=300, VPER=132000, HOR=88;
+// ---------- perspective camera (closer + slightly higher: near horses big, far straight readable) ----------
+const CAMX=CX, CAMY=780, KF=340, VPER=118000, HOR=88;
 function project(x,y){
   const d = CAMY - y;              // depth from camera
   const s = KF/d;                  // perspective scale
