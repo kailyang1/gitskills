@@ -504,131 +504,227 @@ function horseSprite(h, f){
 const cvs = $('#cv'), ctx = cvs.getContext('2d');
 ctx.imageSmoothingEnabled = false;
 const W = cvs.width, H = cvs.height;
-const TRACK_TOP = 128, LANES = 6, LANE_H = (H-TRACK_TOP-4)/LANES;
-const X0 = 46, SPRITE_SC = 4, SPR_W = 34*SPRITE_SC;
-const FINISH_X = W - SPR_W - 8;   // sprite origin at finish; nose lands near right edge
+// ---------- oval track geometry (top-down) ----------
+const LANES = 6;
+const CX=390, CY=264, RXO=336, RYO=224, RXI=192, RYI=80, SC=2;
+const THF = Math.PI/2;                  // finish line at bottom center
+const START_OFF = 0.06;                 // gate sits 6% past the wire
+const RACE_FRAC = 1 - START_OFF;        // horses run 0.94 lap
+const PULLUP = 0.08;                    // extra arc sampled past finish
+const TRACK_TOP = 40;
 
-// pre-render static background (track only; crowd/gate drawn live)
+function laneRad(i){
+  return { rx: RXO - (i+0.5)*(RXO-RXI)/LANES,
+           ry: RYO - (i+0.5)*(RYO-RYI)/LANES };
+}
+// arc-length parameterization per lane: u∈[0,1] gate→finish, u>1 pull-up zone
+const NARC=720, SPAN=(RACE_FRAC+PULLUP)*2*Math.PI;
+const arcTab=[];
+for(let i=0;i<LANES;i++){
+  const {rx,ry}=laneRad(i);
+  const th=[], cum=[];
+  let prev=null, L=0;
+  for(let k=0;k<=NARC;k++){
+    // clockwise on screen (y-down): θ increases; gate sits just past the wire,
+    // horses run RACE_FRAC of a lap to finish at θ=π/2
+    const t = Math.PI/2 + START_OFF*2*Math.PI + k/NARC*SPAN;
+    const x=CX+rx*Math.cos(t), y=CY+ry*Math.sin(t);
+    if(prev) L+=Math.hypot(x-prev[0],y-prev[1]);
+    th.push(t); cum.push(L); prev=[x,y];
+  }
+  const Lrace = cum[Math.round(NARC*RACE_FRAC/(RACE_FRAC+PULLUP))];
+  arcTab.push({th, cum, u: cum.map(c=>c/Lrace), rx, ry});
+}
+function lanePoint(i, u){
+  const T=arcTab[i];
+  let lo=0, hi=NARC;
+  while(hi-lo>1){ const mid=(lo+hi)>>1; (T.u[mid]<=u)?lo=mid:hi=mid; }
+  const f=(u-T.u[lo])/((T.u[hi]-T.u[lo])||1);
+  const th=T.th[lo]+(T.th[hi]-T.th[lo])*f;
+  // sprite nose is local -y; rotate(a) maps (0,-1)→(sin a, -cos a);
+  // heading = d/dθ (rx cosθ, ry sinθ) = (-rx sinθ, ry cosθ)
+  return { x: CX+T.rx*Math.cos(th), y: CY+T.ry*Math.sin(th),
+           ang: Math.atan2(-T.rx*Math.sin(th), -T.ry*Math.cos(th)) };
+}
+
+// pre-render static oval background
 const bg = document.createElement('canvas'); bg.width=W; bg.height=H;
 (function paintBG(){
   const b = bg.getContext('2d');
-  // sky gradient bands
-  b.fillStyle='#7bd1e8'; b.fillRect(0,0,W,30);
-  b.fillStyle='#8fdcef'; b.fillRect(0,30,W,20);
-  b.fillStyle='#a5e4f2'; b.fillRect(0,50,W,20);
-  // clouds drawn live (moving)
-  // stands roof + structure
-  b.fillStyle='#2a2e45'; b.fillRect(0,36,W,10);      // roof
-  b.fillStyle='#34395a'; b.fillRect(0,46,W,38);      // stand body
-  b.fillStyle='#232741'; b.fillRect(0,84,W,10);      // base
-  // crowd drawn live (animated)
-  // rail fence
-  b.fillStyle='#8b90b3'; b.fillRect(0,94,W,4);
-  for(let x=0;x<W;x+=26){ b.fillStyle='#5c6183'; b.fillRect(x,94,3,18); }
-  b.fillStyle='#8b90b3'; b.fillRect(0,110,W,3);
-  // grass + lanes
+  const ell=(rx,ry)=>{ b.beginPath(); b.ellipse(CX,CY,rx,ry,0,0,Math.PI*2); };
+  // surroundings (outside the track)
+  b.fillStyle='#356633'; b.fillRect(0,0,W,H);
+  // perimeter hedge ring
+  b.strokeStyle='#2e5c2c'; b.lineWidth=12; ell(RXO+18, RYO+18); b.stroke();
+  // infield grass
+  b.fillStyle='#3f8a3d'; ell(RXI-6, RYI-6); b.fill();
+  // mow stripes on infield: alternating arcs
+  for(let s2=0;s2<12;s2++){
+    if(s2%2) continue;
+    b.beginPath();
+    b.ellipse(CX,CY,RXI-8,RYI-8,0, s2*Math.PI/6, (s2+1)*Math.PI/6);
+    b.ellipse(CX,CY,8,5,0, (s2+1)*Math.PI/6, s2*Math.PI/6, true);
+    b.fillStyle='rgba(255,255,255,.05)'; b.fill();
+  }
+  // infield pond
+  b.fillStyle='#3d7dbb'; b.beginPath(); b.ellipse(CX+64,CY+4,46,17,0,0,Math.PI*2); b.fill();
+  b.fillStyle='#5b9ad4'; b.beginPath(); b.ellipse(CX+64,CY+4,34,11,0,0,Math.PI*2); b.fill();
+  // infield trees
+  [[CX-120,CY-14],[CX-118,CY+16],[CX-64,CY-26],[CX+16,CY-24],[CX-30,CY+20]].forEach(([tx,ty])=>{
+    b.fillStyle='#5c4626'; b.fillRect(tx-1,ty+4,3,5);
+    b.fillStyle='#2f6e2f'; b.beginPath(); b.ellipse(tx,ty,10,8,0,0,Math.PI*2); b.fill();
+    b.fillStyle='#3c853c'; b.beginPath(); b.ellipse(tx-2,ty-2,6,5,0,0,Math.PI*2); b.fill();
+  });
+  // the track band: lane rings
   for(let i=0;i<LANES;i++){
-    const y = TRACK_TOP + i*LANE_H;
-    b.fillStyle = i%2? '#4f9e4a':'#459142';
-    b.fillRect(0,y,W,LANE_H);
-    b.fillStyle='#3a7a36'; b.fillRect(0,y+LANE_H-2,W,2);
+    const {rx,ry}=laneRad(i);
+    b.strokeStyle = i%2? '#4f9e4a' : '#459142';
+    b.lineWidth = (RYO-RYI)/LANES;
+    ell(rx,ry); b.stroke();
   }
-  // furlong markers
-  for(let m=1;m<=4;m++){
-    const x = X0 + (FINISH_X-X0)*m/5;
-    b.fillStyle='rgba(255,255,255,.35)'; b.fillRect(x,TRACK_TOP,2,H-TRACK_TOP);
+  // mow sector stripes across the band
+  for(let s2=0;s2<24;s2++){
+    if(s2%2) continue;
+    b.beginPath();
+    b.ellipse(CX,CY,RXO-2,RYO-2,0, s2*Math.PI/12, (s2+1)*Math.PI/12);
+    b.ellipse(CX,CY,RXI+2,RYI+2,0, (s2+1)*Math.PI/12, s2*Math.PI/12, true);
+    b.fillStyle='rgba(255,255,255,.045)'; b.fill();
   }
-  // finish checkered strip on ground (horses cross it at the wire)
-  const fx = W-24;
-  for(let y=TRACK_TOP;y<H;y+=6){
-    for(let k=0;k<2;k++){
-      b.fillStyle = (((y/6)|0)+k)%2? '#0c0d1a':'#f4f0e8';
-      b.fillRect(fx, y+k*3, 20, 3);
-    }
+  // lane divider dots
+  b.setLineDash([3,12]); b.lineWidth=1;
+  b.strokeStyle='rgba(255,255,255,.14)';
+  for(let i=1;i<LANES;i++){
+    const {rx,ry}=laneRad(i-0.5+0.5); // boundary between lanes: use mid offsets
+    const rxm=RXO-i*(RXO-RXI)/LANES, rym=RYO-i*(RYO-RYI)/LANES;
+    b.beginPath(); b.ellipse(CX,CY,rxm,rym,0,0,Math.PI*2); b.stroke();
   }
+  b.setLineDash([]);
+  // outer + inner rails (white posts)
+  b.fillStyle='#dfe3ee';
+  for(let k=0;k<72;k++){
+    const t=k/72*Math.PI*2;
+    b.fillRect(CX+(RXO+2)*Math.cos(t)-1, CY+(RYO+2)*Math.sin(t)-2, 3, 4);
+    b.fillRect(CX+(RXI-2)*Math.cos(t)-1, CY+(RYI-2)*Math.sin(t)-2, 3, 4);
+  }
+  // finish line: checkered strip across the band at bottom center
+  for(let r=0;r<12;r++) for(let c2=0;c2<2;c2++){
+    b.fillStyle = (r+c2)%2? '#f4f0e8':'#0c0d1a';
+    b.fillRect(CX-6+c2*6, CY+RYI+ r*(RYO-RYI)/12, 6, (RYO-RYI)/12);
+  }
+  // distance poles (inner rail): 3/4, 1/2, 1/4 of race
+  const poleCols=['#4d9be6','#ffcd75','#ef5d66'];
+  [0.75,0.5,0.25].forEach((uu,ix)=>{
+    const T=arcTab[2];
+    let lo=0,hi=NARC; while(hi-lo>1){const m=(lo+hi)>>1;(T.u[m]<=uu)?lo=m:hi=m;}
+    const th=T.th[lo];
+    const px=CX+(RXI-10)*Math.cos(th), py=CY+(RYI-10)*Math.sin(th);
+    b.fillStyle='#f4f0e8'; b.fillRect(px-1,py-14,3,14);
+    b.fillStyle=poleCols[ix]; b.fillRect(px-2,py-18,5,5);
+  });
+  // grandstand strip along the bottom
+  b.fillStyle='#232741'; b.fillRect(0,546,W,H-546);
+  b.fillStyle='#34395a'; b.fillRect(0,506,W,40);
+  b.fillStyle='#2a2e45'; b.fillRect(0,492,W,14);
+  b.fillStyle='#1b1e30'; b.fillRect(0,504,W,3);
+  // bunting on the roofline
+  for(let x=6;x<W;x+=20){
+    b.fillStyle = (x/20|0)%2? '#ef5d66':'#ffcd75';
+    b.fillRect(x,497,7,5);
+    b.fillStyle = (x/20|0)%2? '#63c74d':'#4d9be6';
+    b.fillRect(x+10,497,7,5);
+  }
+  // finish post rising into the stands
+  b.fillStyle='#0c0d1a'; b.fillRect(CX-2, CY+RYO-58, 4, 58);
+  for(let y2=CY+RYO-58;y2<CY+RYO;y2+=6){
+    b.fillStyle = (y2/6|0)%2? '#f4f0e8':'#0c0d1a';
+    b.fillRect(CX-2,y2,4,3);
+  }
+  b.fillStyle='#ef5d66'; b.fillRect(CX+2,CY+RYO-58,14,7);  // flag
 })();
 
-// ---------- live scene elements ----------
-const crowdRows = [];   // {x, row, color, phase, jump}
+
+// ---------- live scene elements (oval layout) ----------
+const crowdRows = [];   // {x, row, color, phase}
 (function seedCrowd(){
   const cols = ['#ef5d66','#ffcd75','#63c74d','#4d9be6','#d057d8','#f4f0e8','#e88c5a','#7bd1e8'];
   for(let row=0; row<3; row++){
-    for(let x=8; x<W; x+=9){
+    for(let x=10; x<W; x+=9){
       if(Math.random()<0.15) continue;  // gaps
       crowdRows.push({x:x+((row%2)*4), row, color:cols[rndi(0,cols.length-1)],
-                      phase:Math.random()*Math.PI*2, jump: Math.random()<0.06});
+                      phase:Math.random()*Math.PI*2});
     }
   }
 })();
-const clouds = [
-  {x:60, y:10, s:1.0}, {x:300, y:16, s:0.7}, {x:520, y:8, s:1.2}, {x:680, y:18, s:0.6}
-];
 let confetti = [];
 let shake = 0; // screen shake magnitude
 
 function drawLiveScene(t){
-  // clouds (drift slowly)
-  ctx.save();
-  clouds.forEach(cl=>{
-    const cx = ((cl.x + t*6) % (W+120)) - 60;
-    ctx.fillStyle='rgba(255,255,255,.85)';
-    ctx.fillRect(cx, cl.y, 34*cl.s, 8*cl.s);
-    ctx.fillRect(cx+6*cl.s, cl.y-5*cl.s, 18*cl.s, 6*cl.s);
-  });
-  ctx.restore();
-  // animated crowd (bob sinusoidally, random jumpers during race)
+  // animated crowd in the bottom grandstand strip
   const excited = phase==='race' || phase==='countdown';
   const now = performance.now()/1000;
   crowdRows.forEach(p=>{
-    const baseY = 50 + p.row*11;
+    const baseY = 538 + p.row*9;
     const bobAmt = excited? 2.2 : 0.8;
     const y = baseY + Math.sin(now*4 + p.phase)*bobAmt;
     ctx.fillStyle=p.color;
-    ctx.fillRect(p.x, y, 4, 6);
-    // head
+    ctx.fillRect(p.x, y, 4, 5);
     ctx.fillStyle='#e8b796';
     ctx.fillRect(p.x, y-3, 3, 3);
   });
-  // bunting flags on the rail
-  for(let x=8; x<W; x+=22){
-    const wobble = Math.sin(now*2 + x*0.2)*1.5;
-    ctx.fillStyle = (x/22|0)%2? '#ef5d66' : '#ffcd75';
-    ctx.fillRect(x, 92+wobble, 8, 5);
-    ctx.fillStyle = (x/22|0)%2? '#63c74d' : '#4d9be6';
-    ctx.fillRect(x+11, 92-wobble, 8, 5);
-  }
+}
+
+// top-down horse: 12x18 oriented sprite, rotated to heading
+const TOPDOWN_ART = [
+"..cCCCc..",
+".cCCCCCc.",
+"cC ttttCc",
+"cC ssssCc",   // jockey torso
+"cC ssssCc",
+"cC SsssCc",
+"cCCCCCCCCc",
+".cCCCCCCc.",
+".dd.cc.dd.",
+".d. .. .d.",
+];
+function buildTopDown(coat, dark, silk){
+  const cv=document.createElement('canvas'); cv.width=10; cv.height=11;
+  const c=cv.getContext('2d');
+  const PAL={C:shade(coat,.28), c:coat, d:dark, t:shade(dark,-.5), s:silk, S:shade(silk,-.38)};
+  TOPDOWN_ART.forEach((row,y)=>{
+    for(let x=0;x<row.length;x++){
+      const ch=row[x]; if(ch==='.') continue;
+      c.fillStyle=PAL[ch]; c.fillRect(x,y,1,1);
+    }
+  });
+  return cv;
+}
+const tdCache={};
+function topDownSprite(h){
+  const key=h.coat+h.silk;
+  if(!tdCache[key]) tdCache[key]=buildTopDown(h.coat,h.dark,h.silk);
+  return tdCache[key];
 }
 
 function drawGate(open){
-  // start gate doors that swing open
-  const gx = X0-14;
-  ctx.fillStyle='#2a2e45'; ctx.fillRect(gx,TRACK_TOP,4,H-TRACK_TOP);
-  // door panels
-  for(let i=0;i<LANES;i++){
-    const y = TRACK_TOP + i*LANE_H;
-    ctx.fillStyle = open? '#3a3f63' : '#4a4f78';
-    if(open){
-      // door swung back: thin sliver against the post
-      ctx.fillRect(gx+2, y+2, 3, LANE_H-6);
-    }else{
-      // closed door across the lane
-      ctx.fillRect(gx+4, y+2, 22, LANE_H-6);
-      ctx.fillStyle='#0c0d1a';
-      ctx.fillRect(gx+4, y+2, 22, 2); ctx.fillRect(gx+4, y+LANE_H-6, 22, 2);
+  // gate stalls across the band at gate angle, drawn as bars
+  const T = arcTab[0];
+  const thg = T.th[0];
+  const gx = CX+RXO*Math.cos(thg), gy = CY+RYO*Math.sin(thg);
+  const gxi = CX+RXI*Math.cos(thg), gyi = CY+RYI*Math.sin(thg);
+  const nx = -(gy-gyi), ny = (gx-gxi);
+  const nl = Math.hypot(nx,ny);
+  const ux = nx/nl, uy = ny/nl;   // unit along the gate line
+  ctx.strokeStyle = open? 'rgba(70,75,110,.9)':'#c8cde0';
+  ctx.lineWidth = open? 2 : 3;
+  ctx.beginPath(); ctx.moveTo(gx,gy); ctx.lineTo(gxi,gyi); ctx.stroke();
+  if(!open){
+    // stall doors: ticks perpendicular
+    ctx.strokeStyle='#8b90b3'; ctx.lineWidth=2;
+    for(let i=0;i<=LANES;i++){
+      const r = i/LANES;
+      const px = gx+(gxi-gx)*r, py = gy+(gyi-gy)*r;
+      ctx.beginPath(); ctx.moveTo(px-ux*7,py-uy*7); ctx.lineTo(px+ux*7,py+uy*7); ctx.stroke();
     }
-  }
-}
-
-function drawFinishBanner(t){
-  // overhead checkered banner at the finish, poles stand on the track edge
-  const bx = FINISH_X + SPR_W - 52, by = TRACK_TOP - 40;
-  // poles (36px, from cloth down to track top)
-  ctx.fillStyle='#0c0d1a';
-  ctx.fillRect(bx-4, by+12, 4, 28); ctx.fillRect(bx+36, by+12, 4, 28);
-  // cloth: 9x3 checkers
-  for(let x=0;x<9;x++) for(let y=0;y<3;y++){
-    ctx.fillStyle = (x+y)%2? '#f4f0e8' : '#0c0d1a';
-    ctx.fillRect(bx+x*4, by+y*4, 4, 4);
   }
 }
 
@@ -662,45 +758,55 @@ function drawRace(t, dt){
   }
   ctx.drawImage(bg,0,0);
   drawLiveScene(t);
-  // start gate: open once race starts
   drawGate(phase==='race' || phase==='finishwait' || phase==='result');
   const running = phase==='race';
-  // dust particles
+  // dust: kicked outward from track center on straights
   dust = dust.filter(d=>d.life>0);
   dust.forEach(d=>{
     ctx.fillStyle=`rgba(214,196,150,${d.life})`;
     ctx.fillRect(d.x|0, d.y|0, d.s, d.s);
     d.x-=d.vx; d.y+=d.vy; d.life-=0.03;
   });
+  // sort horses by y so lower (nearer) horses paint over far ones
+  const order = [];
   for(let i=0;i<6;i++){
-    const h = field[i];
-    const laneY = TRACK_TOP + i*LANE_H + (LANE_H - 17*SPRITE_SC)/2;
     let prog = 0;
     if(phase==='race') prog = progressAt(i, t);
-    else if(phase==='finishwait' || phase==='result') prog = 1;
-    const x = X0 + prog*(FINISH_X - X0);
-    // gallop cadence scales with speed; each horse slightly offset
-    const speed = racePlan? (prog < 1 ? 1/ (racePlan.finishT[i]||14) : 0) : 0;
-    const fr = running? Math.floor(performance.now()/1000 * (7+speed*30) + i*1.7)%6 : 0;
-    const y = laneY + BODY_BOB[fr]*SPRITE_SC*0.5;
-    // speed lines behind fast horses in final stretch
-    if(running && prog>0.8 && prog<1 && speed>0.075){
-      ctx.fillStyle='rgba(255,255,255,.25)';
-      ctx.fillRect((x-14)|0, (y+8)|0, 10, 2);
-      ctx.fillRect((x-20)|0, (y+22)|0, 14, 2);
-    }
-    ctx.drawImage(horseSprite(h, fr), x|0, y|0, 34*SPRITE_SC, 17*SPRITE_SC);
-    // dust while running
-    if(running && prog>0.01 && prog<0.995 && Math.random()<0.25){
-      dust.push({x:x+rndi(0,14), y:y+56+rndi(0,6), s:rndi(3,7), vx:rnd(0.5,1.5), vy:rnd(-0.2,0.3), life:rnd(0.3,0.55)});
-    }
-    // number tag above
-    ctx.fillStyle='#0c0d1a'; ctx.fillRect(x|0, y-13, 16, 12);
-    ctx.fillStyle=h.silk;    ctx.fillRect((x|0)+1, y-12, 14, 10);
-    ctx.fillStyle='#fff'; ctx.font='bold 8px monospace'; ctx.textAlign='center';
-    ctx.fillText(String(i+1), (x|0)+8, y-3);
+    else if(phase==='finishwait' || phase==='result') prog = 1.04;
+    else prog = 0.003;
+    const u = Math.min(prog, 1+PULLUP*2);
+    const p = lanePoint(i, u);
+    order.push({i, prog, ...p});
   }
-  drawFinishBanner(t);
+  order.sort((a,b)=>a.y-b.y);
+  order.forEach(o=>{
+    const h = field[o.i];
+    const speed = racePlan? (o.prog < 1 ? 1/(racePlan.finishT[o.i]||14) : 0) : 0;
+    // draw body: rotate sprite to heading
+    ctx.save();
+    ctx.translate(o.x, o.y);
+    ctx.rotate(o.ang);
+    const spr = topDownSprite(h);
+    const sw = 30, sh2 = 34;   // sprite scale 3x
+    ctx.drawImage(spr, -sw/2, -sh2/2, sw, sh2);
+    ctx.restore();
+    // shadow: offset toward track center (light overhead)
+    const cxv = o.x-CX, cyv = o.y-CY;
+    const cl2 = Math.hypot(cxv,cyv)||1;
+    ctx.fillStyle='rgba(10,20,10,.28)';
+    ctx.beginPath(); ctx.ellipse(o.x - cxv/cl2*5, o.y - cyv/cl2*5, 15, 8, o.ang, 0, Math.PI*2); ctx.fill();
+    // number tag: silk-colored disc above horse
+    const tagY = o.y-24 + Math.sin(performance.now()/300 + o.i)*1.5;
+    ctx.fillStyle='#0c0d1a'; ctx.beginPath(); ctx.arc(o.x, tagY, 9, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle=h.silk;  ctx.beginPath(); ctx.arc(o.x, tagY, 7.5, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle='#fff'; ctx.font='bold 9px monospace'; ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(String(o.i+1), o.x, tagY+0.5);
+    ctx.textBaseline='alphabetic';
+    // dust while running on the home stretch (bottom of screen)
+    if(running && o.prog>0.01 && o.prog<0.995 && o.y>CY && Math.random()<0.18){
+      dust.push({x:o.x+rndi(-6,6), y:o.y+rndi(4,10), s:rndi(3,6), vx:rnd(0.2,1), vy:rnd(-0.1,0.2), life:rnd(0.3,0.5)});
+    }
+  });
   drawConfetti(dt||0.016);
   ctx.restore();
 }
