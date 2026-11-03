@@ -23,7 +23,7 @@
     user-select:none; -webkit-user-select:none;
   }
   #app{
-    width:100%; max-width:430px; min-height:100dvh;
+    width:100%; max-width:560px; min-height:100dvh;
     display:flex; flex-direction:column;
     padding:env(safe-area-inset-top) 8px calc(10px + env(safe-area-inset-bottom));
     gap:8px;
@@ -204,7 +204,7 @@
   </header>
 
   <div id="stageWrap">
-    <canvas id="cv" width="780" height="560"></canvas>
+    <canvas id="cv" width="1040" height="560"></canvas>
     <div id="raceMsg"></div>
     <div id="countdown"></div>
     <div id="liveBar"></div>
@@ -506,7 +506,7 @@ ctx.imageSmoothingEnabled = false;
 const W = cvs.width, H = cvs.height;
 // ---------- oval track geometry (top-down) ----------
 const LANES = 6;
-const CX=390, CY=264, RXO=336, RYO=224, RXI=192, RYI=80, SC=2;
+const CX=520, CY=264, RXO=448, RYO=224, RXI=256, RYI=80, SC=2;
 const THF = Math.PI/2;                  // finish line at bottom center
 const START_OFF = 0.06;                 // gate sits 6% past the wire
 const RACE_FRAC = 1 - START_OFF;        // horses run 0.94 lap
@@ -546,7 +546,7 @@ function lanePoint(i, u){
 }
 
 // ---------- perspective camera (view from the grandstand 2nd floor) ----------
-const CAMX=CX, CAMY=700, KF=227, VPER=92000, HOR=96;
+const CAMX=CX, CAMY=700, KF=300, VPER=92000, HOR=96;
 function project(x,y){
   const d = CAMY - y;              // depth from camera
   const s = KF/d;                  // perspective scale
@@ -563,7 +563,7 @@ const bg = document.createElement('canvas'); bg.width=W; bg.height=H;
   b.fillStyle='#a5e4f2'; b.fillRect(0,68,W,HOR-68);
   b.fillStyle='#fff3b0'; b.fillRect(60,18,30,30);
   b.fillStyle='rgba(255,255,255,.85)';
-  [[150,26,1],[320,40,.7],[560,20,1.2],[690,44,.6]].forEach(([cx,cy,s2])=>{
+  [[170,26,1],[400,40,.7],[700,20,1.2],[880,44,.6],[240,48,.5]].forEach(([cx,cy,s2])=>{
     b.fillRect(cx,cy,38*s2,9*s2); b.fillRect(cx+7*s2,cy-6*s2,20*s2,7*s2);
   });
   // base ground
@@ -579,8 +579,8 @@ const bg = document.createElement('canvas'); bg.width=W; bg.height=H;
   }
   b.fillStyle='#31602f'; b.fillRect(0,HOR+20,W,16);
   // distant far-side grandstand sliver
-  b.fillStyle='#2a2e45'; b.fillRect(200,HOR+30,380,10);
-  b.fillStyle='#34395a'; b.fillRect(200,HOR+30,380,4);
+  b.fillStyle='#2a2e45'; b.fillRect(300,HOR+30,440,10);
+  b.fillStyle='#34395a'; b.fillRect(300,HOR+30,440,4);
 
   // helper: projected polygon of an ellipse arc
   const ellPath=(rx,ry,a0,a1,steps)=>{
@@ -681,7 +681,7 @@ const bg = document.createElement('canvas'); bg.width=W; bg.height=H;
     b.fillStyle=poleCols[ix]; b.fillRect(p.x, p.y-h2, Math.max(5,12*p.s), Math.max(3,8*p.s));
   });
   // infield trees as billboards
-  [[CX-120,CY-14],[CX-118,CY+16],[CX-64,CY-26],[CX+16,CY-24],[CX-30,CY+20]].forEach(([tx,ty])=>{
+  [[CX-180,CY-14],[CX-176,CY+16],[CX-96,CY-26],[CX+20,CY-24],[CX-40,CY+20],[CX+120,CY+8],[CX+180,CY-18]].forEach(([tx,ty])=>{
     const p=project(tx,ty);
     const s2=Math.max(.35,p.s);
     b.fillStyle='#5c4626'; b.fillRect(p.x-2*s2, p.y-10*s2, 4*s2, 10*s2);
