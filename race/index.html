@@ -596,17 +596,74 @@ const standSeats=[];
 const bg = document.createElement('canvas'); bg.width=W; bg.height=H;
 (function paintBG(){
   const b = bg.getContext('2d');
-  // sky
-  b.fillStyle='#7bd1e8'; b.fillRect(0,0,W,34);
-  b.fillStyle='#8fdcef'; b.fillRect(0,34,W,34);
-  b.fillStyle='#a5e4f2'; b.fillRect(0,68,W,HOR-68);
+  // sky (deeper gradient)
+  b.fillStyle='#6cc4e0'; b.fillRect(0,0,W,22);
+  b.fillStyle='#7bd1e8'; b.fillRect(0,22,W,26);
+  b.fillStyle='#8fdcef'; b.fillRect(0,48,W,26);
+  b.fillStyle='#a5e4f2'; b.fillRect(0,74,W,HOR-74);
+  // sun + glow
+  b.fillStyle='rgba(255,243,176,.5)'; b.fillRect(52,10,46,46);
   b.fillStyle='#fff3b0'; b.fillRect(60,18,30,30);
+  // layered clouds: high wisps + mid puffs
+  b.fillStyle='rgba(255,255,255,.55)';
+  [[90,14,.55],[300,10,.4],[640,16,.5],[860,8,.45],[210,34,.35]].forEach(([cx,cy,s2])=>{
+    b.fillRect(cx,cy,46*s2,6*s2); b.fillRect(cx+8*s2,cy-4*s2,24*s2,5*s2);
+  });
   b.fillStyle='rgba(255,255,255,.85)';
-  [[170,26,1],[400,40,.7],[700,20,1.2],[880,44,.6],[240,48,.5]].forEach(([cx,cy,s2])=>{
+  [[170,26,1],[400,40,.7],[700,20,1.2],[880,44,.6],[240,48,.5],[560,30,.8]].forEach(([cx,cy,s2])=>{
     b.fillRect(cx,cy,38*s2,9*s2); b.fillRect(cx+7*s2,cy-6*s2,20*s2,7*s2);
   });
   // base ground
   b.fillStyle='#3d7a3b'; b.fillRect(0,HOR,W,H-HOR);
+
+  // ---------- DISTANT SCENERY (behind everything else) ----------
+  // far mountain range (pale, atmospheric)
+  b.fillStyle='#8fa8b8';
+  b.beginPath(); b.moveTo(0,HOR+2);
+  let mx=0; const mseed=[30,90,55,120,70,140,45,100,60];
+  for(let i=0;i<9;i++){ mx+=W/9; b.lineTo(mx-W/18, HOR+2-mseed[i]); b.lineTo(mx, HOR+2); }
+  b.lineTo(W,HOR+2); b.closePath(); b.fill();
+  // second mountain layer (closer, greener)
+  b.fillStyle='#71907e';
+  b.beginPath(); b.moveTo(0,HOR+2);
+  mx=0; const m2seed=[18,50,26,64,32,52,20,44,14];
+  for(let i=0;i<9;i++){ mx+=W/9; b.lineTo(mx-W/20, HOR+2-m2seed[i]); b.lineTo(mx, HOR+2); }
+  b.lineTo(W,HOR+2); b.closePath(); b.fill();
+  // city skyline silhouette on the left horizon (tinted, far)
+  b.fillStyle='rgba(90,108,138,.8)';
+  [[20,26,14],[40,20,10],[58,34,12],[76,16,8],[92,28,14],[112,22,10],[130,30,12]].forEach(([x,h2,w2])=>{
+    b.fillRect(x, HOR+2-h2, w2, h2);
+  });
+  b.fillStyle='rgba(120,140,170,.5)'; b.fillRect(16,HOR-6,3,3); b.fillRect(64,HOR-10,3,3);
+  // tree line rolling along the horizon (right of the city)
+  for(let x=170;x<W;x+=22){
+    const th2 = 10 + ((x*7919)%23)/23*12;
+    b.fillStyle='#3f6b3a';
+    b.beginPath(); b.arc(x+11, HOR+4, 11+((x*104729)%7)/7*5, 0, Math.PI*2); b.fill();
+    b.fillStyle='#4a7a44';
+    b.beginPath(); b.arc(x+8, HOR+1, 7+((x*1299709)%5)/5*4, 0, Math.PI*2); b.fill();
+  }
+  b.fillStyle='#3a6536'; b.fillRect(0,HOR+2,W,12);
+  // park/beyond area between tree line and the stand: picnic lawns + tiny people + flags
+  b.fillStyle='#478a42'; b.fillRect(0,HOR+12,W,10);
+  // a few picnic groups (tiny dots)
+  for(let i=0;i<26;i++){
+    const px2 = 30+((i*7331)%1000), py2 = HOR+13+((i*5171)%8);
+    b.fillStyle=['#ef5d66','#ffcd75','#4d9be6','#f4f0e8'][i%4];
+    b.fillRect(px2, py2, 2, 3);
+  }
+  // tall flag poles in the park area
+  [[210,'#ef5d66'],[480,'#4d9be6'],[760,'#ffcd75']].forEach(([fx,fc])=>{
+    b.fillStyle='#d8dce8'; b.fillRect(fx, HOR-14, 2, 26);
+    b.fillStyle=fc; b.fillRect(fx+2, HOR-14, 10, 6);
+  });
+  // parked cars row behind the far side of the stand (peeking between trees)
+  for(let i=0;i<8;i++){
+    const cx2=80+i*120+((i*331)%30), cy2=HOR+18;
+    b.fillStyle=['#c94f4f','#4f7ac9','#c9a84f','#5fc06f','#b0b0c0'][i%5];
+    b.fillRect(cx2, cy2, 18, 6);
+    b.fillStyle='rgba(30,40,60,.8)'; b.fillRect(cx2+3, cy2-3, 11, 4);
+  }
 
   // ---------- infield (painted AFTER rings to fill the hole) ----------
   const innPath=()=>{
