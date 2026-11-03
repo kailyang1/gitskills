@@ -405,75 +405,98 @@ function progressAt(hIdx, t){
   return i>=K-1 ? 1 : c[i]*(1-f)+c[i+1]*f;
 }
 
-// ---------- pixel horse sprites (28x16, 6-frame gallop cycle) ----------
-// gallop phases: F0 suspension(stretched) F1 reach F2 support F3 drive F4 push F5 gather
-function buildHorseFrame(f, coat, dark, silk, num){
-  const cv = document.createElement('canvas'); cv.width=28; cv.height=16;
+// ---------- HAND-DRAWN pixel horse (34x17, char-map art) ----------
+// legend: C coat-light  c coat  d coat-dark  t tail/mane  s silk  S silk-dark
+//         k skin  w white  e black-detail  m muzzle  b bridle  h hoof
+function hexRGB(x){ x=x.replace('#',''); return [parseInt(x.slice(0,2),16),parseInt(x.slice(2,4),16),parseInt(x.slice(4,6),16)]; }
+function rgbHex(r,g,b){ return '#'+[r,g,b].map(v=>Math.round(Math.max(0,Math.min(255,v))).toString(16).padStart(2,'0')).join(''); }
+function shade(hex,k){ const [r,g,b]=hexRGB(hex);
+  return k>=0? rgbHex(r+(255-r)*k, g+(255-g)*k, b+(255-b)*k) : rgbHex(r*(1+k), g*(1+k), b*(1+k)); }
+
+// body incl. crouched jockey + flowing tail + neck (head drawn separately)
+const BODY_ART = [
+"",                                              // y0  (ears of head map reach here)
+"",                                              // y1
+"..............wwss",                           // y2  helmet stripe+cap
+".............wsssek...tCCC",                   // y3  goggles e, face k, mane t, neck top
+"............Sssssskk..tCCCC",                  // y4
+"...........Sssssskkk..tCCCC",                  // y5  arm reaching neck
+"..........Sssssss....tCCCC",                   // y6
+"..tt....ccSssssscccCCCCCCC",                   // y7  saddle cloth meets back, withers
+".tt....ccCCCCCCCCCCCCCCCCCCC",                 // y8  barrel highlight band
+"tt....cccCCCCCCCCCCCCCCCdCC",                  // y9
+"t....dcccccccccccccccccddCC",                  // y10 belly shade
+".....ddccccccccccdddd",                        // y11 underline
+"", "", "", "", ""                               // y12-16 legs (painted)
+];
+// head: ears, forelock, eye, bridle, tapering muzzle — placed at (23+stretch, 0)
+const HEAD_ART = [
+"...e..e.",      // ears
+"..tCCeCC",      // forelock + eye
+"..tCCCCC",
+".bCCCCmm",      // bridle b
+"..CCCmmm",      // muzzle
+"...bCmme"       // nostril
+];
+// gallop leg phases: [hindA, hindB, foreA, foreB] = [hipX,hipY, jointX,jointY, hoofX,hoofY]
+const LEG_ART = [
+ [[7,11,5,12,2,13],[9,11,7,12,4,14],[20,11,23,12,26,13],[22,11,24,13,27,14]], // F0 suspension: all airborne, stretched
+ [[7,11,5,12,3,14],[9,11,8,13,6,15],[20,11,24,13,27,15],[22,11,23,12,25,14]], // F1 reach: fores thrust fwd, hinds trail
+ [[7,11,6,13,8,15],[9,11,10,13,11,14],[20,11,20,13,20,16],[22,11,23,13,24,15]], // F2 support: fore planted
+ [[7,11,6,13,5,15],[9,11,8,13,7,16],[20,11,21,12,22,13],[22,11,22,12,21,13]], // F3 drive: hinds push ground
+ [[7,11,5,12,2,14],[9,11,7,12,4,15],[20,11,21,11,22,12],[22,11,21,12,20,12]], // F4 push-off: hings extended back, body rises
+ [[7,11,7,12,6,14],[9,11,9,13,8,15],[20,11,22,12,24,13],[22,11,22,13,23,14]]  // F5 gather: folding under
+];
+const BODY_BOB = [-1,0,0,0,-1,0];   // suspension lifts, support drops
+
+function buildHorseFrame(f, coat, dark, silk){
+  const cv = document.createElement('canvas'); cv.width=34; cv.height=17;
   const c = cv.getContext('2d');
-  const P=(x,y,col)=>{ c.fillStyle=col; c.fillRect(x,y,1,1); };
-  const R=(x,y,w,h,col)=>{ c.fillStyle=col; c.fillRect(x,y,w,h); };
-  const L=(ax,ay,kx,ky,hx,hy)=>{ // leg: anchor->knee->hoof, 2px wide, dark hoof
-    const seg=(x1,y1,x2,y2)=>{ const n=Math.max(Math.abs(x2-x1),Math.abs(y2-y1),1);
-      for(let s=0;s<=n;s++) P(Math.round(x1+(x2-x1)*s/n), Math.round(y1+(y2-y1)*s/n), dark); };
-    seg(ax,ay,kx,ky); seg(kx,ky,hx,hy);
-    P(hx,hy,'#151515'); P(hx+1,hy,'#151515'); P(hx,hy-1,dark);
+  const PAL = {
+    C: shade(coat, .28), c: coat, d: dark, t: shade(dark, -.5),
+    s: silk, S: shade(silk, -.38), k: '#e8b796', K: '#c9926e',
+    w: '#f4f0e8', e: '#14141e', m: shade(coat, -.35), b: '#7a5230', h: '#26262e'
   };
-  const yb = [-1,0,1,1,0,-1][f];            // body bob per frame
-  const stretch = (f===0)?1:0;              // body elongates at full suspension
-  // ---- tail (flaps on alternate frames) ----
-  const tf = f%2;
-  R(3,7+yb,2,3,dark); P(2,6+yb+(tf?0:1),dark); P(1,7+yb+(tf?1:0),dark); P(1,8+yb,dark);
-  if(tf) P(0,8+yb,dark);
-  // ---- hindquarters / body / chest (with stretch) ----
-  R(5+stretch,6+yb,16,4,coat);              // barrel
-  R(6+stretch,10+yb,13,1,dark);             // belly line
-  P(4,7+yb,dark); R(5+stretch,7+yb,1,3,dark); // rump fade
-  R(19+stretch,6+yb,3,3,coat);              // chest/shoulder mass
-  // ---- neck + head ----
-  R(21+stretch,4+yb,3,3,coat);              // lower neck
-  R(23+stretch,2+yb,4,2,coat);              // upper neck
-  R(25+stretch,1+yb,3,2,coat);              // head
-  P(28,2+yb,dark); P(28,3+yb,dark);         // muzzle
-  P(26,1+yb,'#111');                        // eye
-  P(24+stretch,0+yb,dark); P(25+stretch,0+yb,dark); // ears
-  // mane: dark strip along neck top
-  R(22+stretch,1+yb,3,1,dark); P(21+stretch,2+yb,dark); P(22+stretch,2+yb,dark);
-  // bridle line
-  P(26,3+yb,dark);
-  // ---- saddle cloth + number panel ----
-  R(12+stretch,5+yb,4,1,silk);              // cloth behind jockey
-  P(13+stretch,6+yb,silk);                  // cloth side drop
-  // ---- jockey (crouched, silk colors, striped cap) ----
-  R(14+stretch,3+yb,4,2,silk);              // torso
-  P(13+stretch,4+yb,silk);                  // back edge
-  P(18+stretch,3+yb,'#e8b796');             // face
-  P(19+stretch,4+yb,'#e8b796');             // chin forward
-  R(16+stretch,2+yb,3,1,'#f4f0e8');         // helmet stripe
-  R(15+stretch,2+yb,1,1,silk);              // cap front
-  P(17+stretch,4+yb,silk);                  // arm to neck
-  P(15+stretch,2+yb,'#111');                // goggles
-  // whip hint on drive frames
-  if(f===3||f===4) P(20+stretch,2+yb,dark);
-  // ---- legs: [hipA,hipB] hind, [shA,shB] front ----
-  const hips  = [[9+stretch,10+yb],[12+stretch,10+yb]];
-  const shs   = [[19+stretch,10+yb],[21+stretch,10+yb]];
-  const D = [ // per frame: [hindA knee,hoof],[hindB knee,hoof],[frontA knee,hoof],[frontB knee,hoof]
-    [ [[-3,-1],[-6, 2]], [[-2, 0],[-4, 3]], [[ 4,-2],[ 6, 1]], [[ 5,-1],[ 7, 2]] ], // F0 suspension
-    [ [[-2, 1],[-4, 4]], [[-1, 1],[-2, 4]], [[ 3, 0],[ 5, 3]], [[ 4, 0],[ 6, 3]] ], // F1 reach
-    [ [[-2, 2],[-3, 4]], [[-1, 2],[-1, 4]], [[ 1, 1],[ 1, 4]], [[ 2, 1],[ 3, 4]] ], // F2 support
-    [ [[-3, 0],[-5, 2]], [[-2, 0],[-4, 3]], [[ 2,-1],[ 3, 1]], [[ 3,-1],[ 4, 2]] ], // F3 drive
-    [ [[-3,-1],[-6, 1]], [[-2,-1],[-5, 2]], [[ 2,-2],[ 2,-1]], [[ 3,-2],[ 3, 0]] ], // F4 push
-    [ [[-1, 0],[-2, 2]], [[ 0, 0],[-1, 2]], [[ 1,-2],[ 2, 0]], [[ 2,-2],[ 2, 0]] ]  // F5 gather
-  ][f];
-  hips.forEach((a,i)=> L(a[0],a[1], a[0]+D[i][0][0],a[1]+D[i][0][1], a[0]+D[i][1][0],a[1]+D[i][1][1]));
-  shs .forEach((a,i)=> L(a[0],a[1], a[0]+D[i+2][0][0],a[1]+D[i+2][0][1], a[0]+D[i+2][1][0],a[1]+D[i+2][1][1]));
+  const P=(x,y,col)=>{ if(x<0||x>33||y<0||y>16) return; c.fillStyle=col; c.fillRect(x,y,1,1); };
+  const yb = BODY_BOB[f];
+  const stretch = (f===0)?1:0;   // body elongates at full suspension
+
+  // body art
+  BODY_ART.forEach((row,y)=>{
+    for(let x=0;x<row.length;x++){
+      const ch=row[x]; if(ch==='.'||ch===' ') continue;
+      P(x, y+yb, PAL[ch]);
+    }
+  });
+  // head art at variable x (stretch)
+  HEAD_ART.forEach((row,y)=>{
+    for(let x=0;x<row.length;x++){
+      const ch=row[x]; if(ch==='.'||ch===' ') continue;
+      P(x+23+stretch, y+yb+1, PAL[ch]);
+    }
+  });
+  // legs: thick upper leg, thin cannon, black hoof
+  const leg=(ax,ay,jx,jy,hx,hy)=>{
+    ay+=yb; jy+=yb; hy+=yb;
+    const seg=(x1,y1,x2,y2,w)=>{
+      const n=Math.max(Math.abs(x2-x1),Math.abs(y2-y1),1);
+      for(let s2=0;s2<=n;s2++){
+        const px=Math.round(x1+(x2-x1)*s2/n), py=Math.round(y1+(y2-y1)*s2/n);
+        P(px,py,PAL.d); if(w>1) P(px,py+1,PAL.d);
+      }
+    };
+    seg(ax,ay,jx,jy,2);            // upper leg w/ forearm/thigh mass
+    seg(jx,jy,hx,hy,1);            // cannon bone
+    P(hx,hy,PAL.h); P(hx+1,hy,PAL.h); P(hx,hy+1,PAL.h); // hoof
+  };
+  LEG_ART[f].forEach(L=>leg(...L));
   return cv;
 }
 const spriteCache = {};
 function horseSprite(h, f){
   f = ((f%6)+6)%6;
-  const key = h.idx+':'+f;
-  if(!spriteCache[key]) spriteCache[key] = buildHorseFrame(f, h.coat, h.dark, h.silk, h.idx+1);
+  const key = h.coat+h.dark+h.silk+':'+f;   // colors in key: cache-safe across races
+  if(!spriteCache[key]) spriteCache[key] = buildHorseFrame(f, h.coat, h.dark, h.silk);
   return spriteCache[key];
 }
 
@@ -482,7 +505,7 @@ const cvs = $('#cv'), ctx = cvs.getContext('2d');
 ctx.imageSmoothingEnabled = false;
 const W = cvs.width, H = cvs.height;
 const TRACK_TOP = 128, LANES = 6, LANE_H = (H-TRACK_TOP-4)/LANES;
-const X0 = 46, SPRITE_SC = 4, SPR_W = 28*SPRITE_SC;
+const X0 = 46, SPRITE_SC = 4, SPR_W = 34*SPRITE_SC;
 const FINISH_X = W - SPR_W - 8;   // sprite origin at finish; nose lands near right edge
 
 // pre-render static background (track only; crowd/gate drawn live)
@@ -651,7 +674,7 @@ function drawRace(t, dt){
   });
   for(let i=0;i<6;i++){
     const h = field[i];
-    const laneY = TRACK_TOP + i*LANE_H + (LANE_H - 16*SPRITE_SC)/2;
+    const laneY = TRACK_TOP + i*LANE_H + (LANE_H - 17*SPRITE_SC)/2;
     let prog = 0;
     if(phase==='race') prog = progressAt(i, t);
     else if(phase==='finishwait' || phase==='result') prog = 1;
@@ -659,14 +682,14 @@ function drawRace(t, dt){
     // gallop cadence scales with speed; each horse slightly offset
     const speed = racePlan? (prog < 1 ? 1/ (racePlan.finishT[i]||14) : 0) : 0;
     const fr = running? Math.floor(performance.now()/1000 * (7+speed*30) + i*1.7)%6 : 0;
-    const y = laneY + ([-1,0,1,1,0,-1][fr])*SPRITE_SC*0.5;
+    const y = laneY + BODY_BOB[fr]*SPRITE_SC*0.5;
     // speed lines behind fast horses in final stretch
     if(running && prog>0.8 && prog<1 && speed>0.075){
       ctx.fillStyle='rgba(255,255,255,.25)';
       ctx.fillRect((x-14)|0, (y+8)|0, 10, 2);
       ctx.fillRect((x-20)|0, (y+22)|0, 14, 2);
     }
-    ctx.drawImage(horseSprite(h, fr), x|0, y|0, 28*SPRITE_SC, 16*SPRITE_SC);
+    ctx.drawImage(horseSprite(h, fr), x|0, y|0, 34*SPRITE_SC, 17*SPRITE_SC);
     // dust while running
     if(running && prog>0.01 && prog<0.995 && Math.random()<0.25){
       dust.push({x:x+rndi(0,14), y:y+56+rndi(0,6), s:rndi(3,7), vx:rnd(0.5,1.5), vy:rnd(-0.2,0.3), life:rnd(0.3,0.55)});
