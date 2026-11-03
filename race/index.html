@@ -562,29 +562,27 @@ function project(x,y){
   return { x: W/2 + (x-CAMX)*s, y: HOR + VPER/d, d, s };
 }
 
-// ---------- surrounding grandstand: wraps the far straight + both bends ----------
+// ---------- surrounding grandstand: FULL ring around the track ----------
 const STAND_OFF=26, STAND_H=78;      // apron gap beyond outer rail; stand height (world units)
 const standBase=[];                  // world footprint points, ordered along the arc
 (function buildStandFootprint(){
-  const r=bndR(0)+STAND_OFF, P=4*SL+2*Math.PI*r, N=280;
-  const samp=[]; let best=0, bd=1e9;
-  for(let i=0;i<=N;i++){
-    const p=stadiumPosR(r, i/N*P); samp.push(p);
-    const d2=(p.x-CX)**2+(p.y-(CY+r))**2;
-    if(d2<bd){bd=d2;best=i;}
-  }
-  const gap=Math.round(0.22*N);      // opening on our side (near straight): no stand
-  for(let i=0;i<=N;i++){
-    const d=Math.min(Math.abs(i-best), N-Math.abs(i-best));
-    if(d>gap) standBase.push(samp[i]);
-  }
+  const r=bndR(0)+STAND_OFF, P=4*SL+2*Math.PI*r, N=320;
+  for(let i=0;i<=N;i++) standBase.push(stadiumPosR(r, i/N*P));
 })();
+// near-straight fade: the section right in front of us stays low so it doesn't
+// block the finish; the sides rise at full height and run off-screen (bowl feel)
+function liftF(x, y){
+  if(y <= CY + bndR(0) - 2) return 1;          // far side & bends: full height
+  const dx2 = Math.abs(x - CX);
+  return clamp((dx2 - 120) / 160, 0, 1);       // near straight: fade toward center
+}
 // seats on three tiers along the footprint (live-animated)
 const standSeats=[];
 (function buildStandSeats(){
   const cols=['#ef5d66','#ffcd75','#63c74d','#4d9be6','#d057d8','#f4f0e8','#e88c5a'];
   standBase.forEach((p,i)=>{
     if(i%2) return;
+    if(liftF(p.x,p.y) < 0.2) return;           // no seats where the stand is faded
     [0.35,0.62,0.88].forEach(f=>{
       standSeats.push({wx:p.x, wy:p.y, f, color:cols[rndi(0,cols.length-1)], phase:Math.random()*Math.PI*2});
     });
@@ -606,43 +604,6 @@ const bg = document.createElement('canvas'); bg.width=W; bg.height=H;
   });
   // base ground
   b.fillStyle='#3d7a3b'; b.fillRect(0,HOR,W,H-HOR);
-
-  // ---------- MAIN GRANDSTAND wrapping far straight + bends ----------
-  // build offset polylines explicitly (translate-after-path is a no-op in Canvas)
-  const SB=standBase;
-  if(SB.length>4){
-    const poly=(dy, lw, style)=>{
-      b.beginPath();
-      SB.forEach((p,i)=>{
-        const s=project(p.x,p.y);
-        const f = 0.5 + s.s;                 // raise more when nearer
-        const y = s.y - dy*f;
-        i? b.lineTo(s.x,y) : b.moveTo(s.x,y);
-      });
-      b.strokeStyle=style; b.lineWidth=lw; b.stroke();
-    };
-    poly(0,   6,  '#2c5a2b');   // hedge along the front edge
-    poly(10,  16, '#363c60');   // tier 3 (top seats face)
-    poly(24,  16, '#2e3352');   // tier 2
-    poly(38,  16, '#262a44');   // tier 1
-    poly(54,  10, '#2a2e45');   // back wall
-    poly(68,  12, '#1b1e30');   // roof
-    poly(82,  5,  '#141728');   // roof ridge
-    // support pylons: ground → roof
-    for(let i=8;i<SB.length-8;i+=26){
-      const s=project(SB[i].x, SB[i].y);
-      const f=0.5+s.s, h2=68*f;
-      b.fillStyle='#1b1e30';
-      b.fillRect(s.x-Math.max(2,4*s.s), s.y-h2, Math.max(3,6*s.s), h2);
-    }
-    // roof bunting flags
-    for(let i=4;i<SB.length-4;i+=8){
-      const s=project(SB[i].x, SB[i].y);
-      const f=0.5+s.s;
-      b.fillStyle = (i/8|0)%2? '#ef5d66':'#ffcd75';
-      b.fillRect(s.x, s.y-76*f, Math.max(4,7*s.s), Math.max(3,5*s.s));
-    }
-  }
 
   // ---------- infield (painted AFTER rings to fill the hole) ----------
   const innPath=()=>{
@@ -721,6 +682,63 @@ const bg = document.createElement('canvas'); bg.width=W; bg.height=H;
     b.fillStyle='#f4f0e8'; b.fillRect(s.x-Math.max(1,2*s.s), s.y-h2, Math.max(2,4*s.s), h2);
     b.fillStyle=poleCols[ix]; b.fillRect(s.x, s.y-h2, Math.max(5,12*s.s), Math.max(3,8*s.s));
   });
+
+  // ---------- SURROUNDING GRANDSTAND (drawn AFTER the track: sides overlap it) ----------
+  const SB=standBase;
+  const poly=(dy, lw, style)=>{
+    b.beginPath();
+    let started=false;
+    SB.forEach((p,i)=>{
+      const lift = liftF(p.x,p.y);
+      if(lift < 0.04) { started=false; return; }   // skip faded center gap
+      const s=project(p.x,p.y);
+      const f = (0.5 + s.s) * Math.max(lift, 0.25);
+      const y = s.y - dy*f;
+      started? b.lineTo(s.x,y) : (b.moveTo(s.x,y), started=true);
+    });
+    b.strokeStyle=style; b.lineWidth=lw; b.stroke();
+  };
+  poly(6,  5,  'rgba(44,90,43,.85)'); // hedge along the front edge
+  poly(14, 16, '#363c60');            // tier 3
+  poly(28, 16, '#2e3352');            // tier 2
+  poly(42, 16, '#262a44');            // tier 1
+  poly(58, 10, '#2a2e45');            // back wall
+  poly(72, 12, '#1b1e30');            // roof
+  poly(84, 5,  '#141728');            // roof ridge
+  // support pylons + bunting (respect lift)
+  for(let i=8;i<SB.length-8;i+=26){
+    const lift=liftF(SB[i].x,SB[i].y);
+    if(lift<0.1) continue;
+    const s=project(SB[i].x, SB[i].y);
+    const f=(0.5+s.s)*Math.max(lift,0.25), h2=72*f;
+    b.fillStyle='#1b1e30';
+    b.fillRect(s.x-Math.max(2,4*s.s), s.y-h2, Math.max(3,6*s.s), h2);
+  }
+  for(let i=4;i<SB.length-4;i+=8){
+    const lift=liftF(SB[i].x,SB[i].y);
+    if(lift<0.15) continue;
+    const s=project(SB[i].x, SB[i].y);
+    const f=(0.5+s.s)*Math.max(lift,0.25);
+    b.fillStyle = (i/8|0)%2? '#ef5d66':'#ffcd75';
+    b.fillRect(s.x, s.y-80*f, Math.max(4,7*s.s), Math.max(3,5*s.s));
+  }
+
+  // ---------- our side: the box rim (canopy edge above us) ----------
+  b.fillStyle='#141728'; b.fillRect(0,0,W,16);              // canopy soffit
+  b.fillStyle='#1b1e30'; b.fillRect(0,10,W,8);
+  for(let x=20;x<W;x+=64){                                  // canopy supports
+    b.fillStyle='#232741'; b.fillRect(x,0,7,18);
+  }
+  // bunting hanging from OUR canopy (foreground, biggest)
+  for(let x=8;x<W;x+=34){
+    b.fillStyle = (x/34|0)%2? '#ef5d66':'#ffcd75';
+    b.fillRect(x, 14, 10, 7);
+    b.fillStyle = (x/34|0)%2? '#63c74d':'#4d9be6';
+    b.fillRect(x+17, 14, 10, 7);
+  }
+  // railing at the bottom: we're standing at the box rail
+  b.fillStyle='#8b90b3'; b.fillRect(0,H-14,W,4);
+  for(let x=0;x<W;x+=42){ b.fillStyle='#5c6183'; b.fillRect(x,H-14,4,14); }
 })();
 
 
@@ -732,13 +750,14 @@ function drawLiveScene(t){
   const excited = phase==='race' || phase==='countdown';
   const now = performance.now()/1000;
   const bobAmt = excited? 2.5 : 0.8;
-  // seats on the surrounding grandstand (world pos → project, raised by tier)
+  // seats on the surrounding grandstand; skip the faded center-front gap
   for(let i=0;i<standSeats.length;i++){
     const p = standSeats[i];
     const s = project(p.wx, p.wy);
-    if(s.y < HOR+6) continue;                 // behind horizon
+    if(s.y < HOR+8) continue;
+    if(s.y > H-20) continue;                  // behind our own railing
     const f = 0.5 + s.s;
-    const tierY = s.y - (12 + p.f*34)*f;      // seat height along stand slope
+    const tierY = s.y - (12 + p.f*34)*f;
     const y = tierY + Math.sin(now*4 + p.phase)*bobAmt*Math.max(.5,s.s*2);
     const w2 = Math.max(2, 5*s.s*2), h2 = Math.max(3, 6*s.s*2);
     ctx.fillStyle=p.color;
@@ -746,7 +765,7 @@ function drawLiveScene(t){
     ctx.fillStyle='#e8b796';
     ctx.fillRect(s.x-w2/2, y-h2*0.6, w2*0.7, h2*0.6);
   }
-  // our side: just a low rail beyond the near straight (no stand, no crowd)
+  // our side rail stays as the foreground frame
   ctx.fillStyle='#8b90b3'; ctx.fillRect(0, H-14, W, 4);
   for(let x=0;x<W;x+=42){
     ctx.fillStyle='#5c6183'; ctx.fillRect(x, H-14, 4, 14);
