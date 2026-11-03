@@ -922,7 +922,7 @@ function drawRace(t, dt){
     ctx.fillRect(d.x|0, d.y|0, d.s, d.s);
     d.x-=d.vx; d.y+=d.vy; d.life-=0.03;
   });
-  // gather horses with projection
+  // gather horses with projection + travel direction (for turning)
   const order = [];
   for(let i=0;i<6;i++){
     let prog = 0;
@@ -931,39 +931,55 @@ function drawRace(t, dt){
     else prog = 0.003;
     const u = Math.min(prog, 1+PULLUP*2);
     const p = lanePoint(i, u);
+    const p2 = lanePoint(i, Math.min(u+0.004, 1+PULLUP*2));
+    const dlen = Math.hypot(p2.x-p.x, p2.y-p.y)||1;
     const scr = project(p.x, p.y);
-    order.push({i, prog, scr, fwd: p.dx});
+    order.push({i, prog, scr, nx:(p2.x-p.x)/dlen, ny:(p2.y-p.y)/dlen});
   }
   order.sort((a,b)=>a.scr.d-b.scr.d);        // farthest first
   order.forEach(o=>{
     const h = field[o.i];
     const speed = racePlan? (o.prog < 1 ? 1/(racePlan.finishT[o.i]||14) : 0) : 0;
     const s = o.scr.s;
-    // gallop frame
-    const fr = running? Math.floor(performance.now()/1000 * (7+speed*30) + o.i*1.7)%6 : 0;
-    // side-view billboard, scaled by perspective, flipped by travel direction
+    // gallop frame — faster cadence so motion reads even at distance
+    const fr = running? Math.floor(performance.now()/1000 * (10+speed*44) + o.i*1.7)%6 : 0;
+    // side-view billboard with turning: squash toward travel depth + slight tilt
     const sprW = 34*s*2.6, sprH = 17*s*2.6;
     const bx = o.scr.x, by = o.scr.y;
-    // shadow on the ground
-    ctx.fillStyle='rgba(10,20,10,.30)';
-    ctx.beginPath(); ctx.ellipse(bx, by, sprW*0.42, sprH*0.13, 0, 0, Math.PI*2); ctx.fill();
+    const facingLeft = o.nx < 0;
+    const squash = Math.max(0.42, Math.abs(o.nx));       // 1 on straights, →0.42 turning away
+    const tilt = o.ny * 0.28 * (facingLeft? 1 : -1);     // bank into the bend
+    const speedN = clamp(speed*13, 0, 1.4);
+    // motion streaks behind fast horses (visible at any distance)
+    if(running && speedN>0.55 && o.prog<1){
+      const sgn = facingLeft? 1 : -1;
+      ctx.fillStyle=`rgba(255,255,255,${0.10+0.12*speedN})`;
+      const stW = sprW*(0.35+0.3*speedN);
+      ctx.fillRect(bx+sgn*sprW*0.45, by-sprH*0.72, stW*sgn*-1, Math.max(1.5,3*s));
+      ctx.fillRect(bx+sgn*sprW*0.38, by-sprH*0.45, stW*0.7*sgn*-1, Math.max(1,2.4*s));
+    }
+    // shadow on the ground, under the feet
+    ctx.fillStyle='rgba(10,20,10,.32)';
+    ctx.beginPath(); ctx.ellipse(bx, by, sprW*0.40*squash, Math.max(2, sprH*0.12), 0, 0, Math.PI*2); ctx.fill();
+    // body: feet planted at the ground point (by), turned per heading
     ctx.save();
-    ctx.translate(bx, by-sprH*0.94);         // stand on the ground point
-    if(o.fwd < 0) ctx.scale(-1,1);           // heading left → mirror
+    ctx.translate(bx, by-2);
+    ctx.rotate(tilt);
+    ctx.scale(squash*(facingLeft?-1:1), 1);
     ctx.drawImage(horseSprite(h, fr), -sprW/2, -sprH, sprW, sprH);
     ctx.restore();
     // number tag disc
     const tagR = Math.max(7, 20*s);
-    const tagY = by - sprH*1.05 - tagR;
+    const tagY = by - sprH - tagR - 4;
     ctx.fillStyle='#0c0d1a'; ctx.beginPath(); ctx.arc(bx, tagY, tagR, 0, Math.PI*2); ctx.fill();
     ctx.fillStyle=h.silk;  ctx.beginPath(); ctx.arc(bx, tagY, tagR*0.82, 0, Math.PI*2); ctx.fill();
     ctx.fillStyle='#fff'; ctx.font=`bold ${Math.max(8,16*s)|0}px monospace`;
     ctx.textAlign='center'; ctx.textBaseline='middle';
     ctx.fillText(String(o.i+1), bx, tagY+1);
     ctx.textBaseline='alphabetic';
-    // dust on the near stretch
-    if(running && o.prog>0.01 && o.prog<0.995 && o.scr.y>CY && Math.random()<0.2 && s>0.2){
-      dust.push({x:bx+rndi(-8,8)*s*3, y:by+rndi(0,4), s:rndi(2,5), vx:rnd(0.2,1), vy:rnd(-0.2,0), life:rnd(0.3,0.5)});
+    // hoof dust — any horse big enough to see
+    if(running && o.prog>0.01 && o.prog<0.995 && s>0.45 && Math.random()<0.3){
+      dust.push({x:bx+rndi(-4,4)*s*3, y:by+rndi(-2,2), s:rndi(2,5), vx:rnd(0.2,1)*(facingLeft?1:-1), vy:rnd(-0.3,0.1), life:rnd(0.3,0.5)});
     }
   });
   drawConfetti(dt||0.016);
