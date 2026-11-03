@@ -541,136 +541,193 @@ function lanePoint(i, u){
   while(hi-lo>1){ const mid=(lo+hi)>>1; (T.u[mid]<=u)?lo=mid:hi=mid; }
   const f=(u-T.u[lo])/((T.u[hi]-T.u[lo])||1);
   const th=T.th[lo]+(T.th[hi]-T.th[lo])*f;
-  // sprite nose is local -y; rotate(a) maps (0,-1)→(sin a, -cos a);
-  // heading = d/dθ (rx cosθ, ry sinθ) = (-rx sinθ, ry cosθ)
-  return { x: CX+T.rx*Math.cos(th), y: CY+T.ry*Math.sin(th),
-           ang: Math.atan2(-T.rx*Math.sin(th), -T.ry*Math.cos(th)) };
+  return { x: CX+T.rx*Math.cos(th), y: CY+T.ry*Math.sin(th), th,
+           dx: -T.rx*Math.sin(th) };   // tangent x-component (facing)
 }
 
-// pre-render static oval background
+// ---------- perspective camera (view from the grandstand 2nd floor) ----------
+const CAMX=CX, CAMY=700, KF=227, VPER=92000, HOR=96;
+function project(x,y){
+  const d = CAMY - y;              // depth from camera
+  const s = KF/d;                  // perspective scale
+  return { x: W/2 + (x-CAMX)*s, y: HOR + VPER/d, d, s };
+}
+
+// pre-render static background (projected)
 const bg = document.createElement('canvas'); bg.width=W; bg.height=H;
 (function paintBG(){
   const b = bg.getContext('2d');
-  const ell=(rx,ry)=>{ b.beginPath(); b.ellipse(CX,CY,rx,ry,0,0,Math.PI*2); };
-  // surroundings (outside the track)
-  b.fillStyle='#356633'; b.fillRect(0,0,W,H);
-  // perimeter hedge ring
-  b.strokeStyle='#2e5c2c'; b.lineWidth=12; ell(RXO+18, RYO+18); b.stroke();
-  // infield grass
-  b.fillStyle='#3f8a3d'; ell(RXI-6, RYI-6); b.fill();
-  // mow stripes on infield: alternating arcs
-  for(let s2=0;s2<12;s2++){
-    if(s2%2) continue;
-    b.beginPath();
-    b.ellipse(CX,CY,RXI-8,RYI-8,0, s2*Math.PI/6, (s2+1)*Math.PI/6);
-    b.ellipse(CX,CY,8,5,0, (s2+1)*Math.PI/6, s2*Math.PI/6, true);
-    b.fillStyle='rgba(255,255,255,.05)'; b.fill();
-  }
-  // infield pond
-  b.fillStyle='#3d7dbb'; b.beginPath(); b.ellipse(CX+64,CY+4,46,17,0,0,Math.PI*2); b.fill();
-  b.fillStyle='#5b9ad4'; b.beginPath(); b.ellipse(CX+64,CY+4,34,11,0,0,Math.PI*2); b.fill();
-  // infield trees
-  [[CX-120,CY-14],[CX-118,CY+16],[CX-64,CY-26],[CX+16,CY-24],[CX-30,CY+20]].forEach(([tx,ty])=>{
-    b.fillStyle='#5c4626'; b.fillRect(tx-1,ty+4,3,5);
-    b.fillStyle='#2f6e2f'; b.beginPath(); b.ellipse(tx,ty,10,8,0,0,Math.PI*2); b.fill();
-    b.fillStyle='#3c853c'; b.beginPath(); b.ellipse(tx-2,ty-2,6,5,0,0,Math.PI*2); b.fill();
+  // sky gradient + sun + clouds (static)
+  b.fillStyle='#7bd1e8'; b.fillRect(0,0,W,34);
+  b.fillStyle='#8fdcef'; b.fillRect(0,34,W,34);
+  b.fillStyle='#a5e4f2'; b.fillRect(0,68,W,HOR-68);
+  b.fillStyle='#fff3b0'; b.fillRect(60,18,30,30);
+  b.fillStyle='rgba(255,255,255,.85)';
+  [[150,26,1],[320,40,.7],[560,20,1.2],[690,44,.6]].forEach(([cx,cy,s2])=>{
+    b.fillRect(cx,cy,38*s2,9*s2); b.fillRect(cx+7*s2,cy-6*s2,20*s2,7*s2);
   });
-  // the track band: lane rings
-  for(let i=0;i<LANES;i++){
-    const {rx,ry}=laneRad(i);
-    b.strokeStyle = i%2? '#4f9e4a' : '#459142';
-    b.lineWidth = (RYO-RYI)/LANES;
-    ell(rx,ry); b.stroke();
+  // base ground
+  b.fillStyle='#3d7a3b'; b.fillRect(0,HOR,W,H-HOR);
+  // distant tree line at the horizon (far side beyond the track)
+  for(let x=-10;x<W+20;x+=26){
+    const th2 = (x*0.037)%1;
+    const h2 = 16+th2*14;
+    b.fillStyle='#2c5a2b';
+    b.beginPath(); b.arc(x+13, HOR+22, 15+th2*6, 0, Math.PI*2); b.fill();
+    b.fillStyle='#356b33';
+    b.beginPath(); b.arc(x+8, HOR+18, 10+th2*4, 0, Math.PI*2); b.fill();
   }
-  // mow sector stripes across the band
-  for(let s2=0;s2<24;s2++){
-    if(s2%2) continue;
+  b.fillStyle='#31602f'; b.fillRect(0,HOR+20,W,16);
+  // distant far-side grandstand sliver
+  b.fillStyle='#2a2e45'; b.fillRect(200,HOR+30,380,10);
+  b.fillStyle='#34395a'; b.fillRect(200,HOR+30,380,4);
+
+  // helper: projected polygon of an ellipse arc
+  const ellPath=(rx,ry,a0,a1,steps)=>{
     b.beginPath();
-    b.ellipse(CX,CY,RXO-2,RYO-2,0, s2*Math.PI/12, (s2+1)*Math.PI/12);
-    b.ellipse(CX,CY,RXI+2,RYI+2,0, (s2+1)*Math.PI/12, s2*Math.PI/12, true);
+    for(let k=0;k<=steps;k++){
+      const t=a0+(a1-a0)*k/steps;
+      const p=project(CX+rx*Math.cos(t), CY+ry*Math.sin(t));
+      k? b.lineTo(p.x,p.y) : b.moveTo(p.x,p.y);
+    }
+  };
+  const boundary=(k)=>({rx:RXO-k*(RXO-RXI)/LANES, ry:RYO-k*(RYO-RYI)/LANES});
+
+  // infield grass
+  ellPath(RXI-6,RYI-6,0,Math.PI*2,96); b.closePath(); b.fillStyle='#3f8a3d'; b.fill();
+  // infield mow arcs
+  for(let s2=0;s2<12;s2+=2){
+    ellPath(RXI-10,RYI-10, s2*Math.PI/6,(s2+1)*Math.PI/6, 8);
+    // inner return path (clockwise hole edge)
+    for(let k=8;k>=0;k--){
+      const t=(s2 + k/8)*Math.PI/6;
+      const p=project(CX+20*Math.cos(t+Math.PI/6*0)+0, CY+14+0); break;
+    }
     b.fillStyle='rgba(255,255,255,.045)'; b.fill();
   }
-  // lane divider dots
-  b.setLineDash([3,12]); b.lineWidth=1;
-  b.strokeStyle='rgba(255,255,255,.14)';
-  for(let i=1;i<LANES;i++){
-    const {rx,ry}=laneRad(i-0.5+0.5); // boundary between lanes: use mid offsets
-    const rxm=RXO-i*(RXO-RXI)/LANES, rym=RYO-i*(RYO-RYI)/LANES;
-    b.beginPath(); b.ellipse(CX,CY,rxm,rym,0,0,Math.PI*2); b.stroke();
+  // pond (projected ellipse around CX+64,CY+4)
+  b.beginPath();
+  for(let k=0;k<=32;k++){
+    const t=k/32*Math.PI*2;
+    const p=project(CX+64+46*Math.cos(t), CY+4+17*Math.sin(t));
+    k? b.lineTo(p.x,p.y):b.moveTo(p.x,p.y);
   }
-  b.setLineDash([]);
-  // outer + inner rails (white posts)
-  b.fillStyle='#dfe3ee';
+  b.closePath(); b.fillStyle='#3d7dbb'; b.fill();
+  b.beginPath();
+  for(let k=0;k<=24;k++){
+    const t=k/24*Math.PI*2;
+    const p=project(CX+64+32*Math.cos(t), CY+4+11*Math.sin(t));
+    k? b.lineTo(p.x,p.y):b.moveTo(p.x,p.y);
+  }
+  b.closePath(); b.fillStyle='#5b9ad4'; b.fill();
+
+  // track lane bands (outer→inner), projected
+  for(let i=0;i<LANES;i++){
+    const B1=boundary(i), B2=boundary(i+1);
+    ellPath(B1.rx,B1.ry,0,Math.PI*2,120);
+    for(let k=120;k>=0;k--){
+      const t=k/120*Math.PI*2;
+      const p=project(CX+B2.rx*Math.cos(t), CY+B2.ry*Math.sin(t));
+      b.lineTo(p.x,p.y);
+    }
+    b.closePath();
+    b.fillStyle = i%2? '#4f9e4a':'#459142';
+    b.fill();
+  }
+  // mow stripes across the band (angular sectors)
+  for(let i=0;i<LANES;i++){
+    const B1=boundary(i), B2=boundary(i+1);
+    for(let s2=0;s2<24;s2+=2){
+      const a0=s2*Math.PI/12, a1=(s2+1)*Math.PI/12;
+      const pts=[];
+      for(let k=0;k<=4;k++){ const t=a0+(a1-a0)*k/4;
+        pts.push(project(CX+B1.rx*Math.cos(t), CY+B1.ry*Math.sin(t))); }
+      for(let k=4;k>=0;k--){ const t=a0+(a1-a0)*k/4;
+        pts.push(project(CX+B2.rx*Math.cos(t), CY+B2.ry*Math.sin(t))); }
+      b.beginPath(); pts.forEach((p,k)=> k?b.lineTo(p.x,p.y):b.moveTo(p.x,p.y));
+      b.closePath(); b.fillStyle='rgba(255,255,255,.05)'; b.fill();
+    }
+  }
+  // rails: white posts along outer & inner boundary
+  b.fillStyle='#e8ecf4';
   for(let k=0;k<72;k++){
     const t=k/72*Math.PI*2;
-    b.fillRect(CX+(RXO+2)*Math.cos(t)-1, CY+(RYO+2)*Math.sin(t)-2, 3, 4);
-    b.fillRect(CX+(RXI-2)*Math.cos(t)-1, CY+(RYI-2)*Math.sin(t)-2, 3, 4);
+    [boundary(0), boundary(LANES)].forEach(B=>{
+      const p=project(CX+(B.rx+2)*Math.cos(t), CY+(B.ry+2)*Math.sin(t));
+      const h2=Math.max(3, 14*p.s);
+      b.fillRect(p.x-Math.max(1,2*p.s), p.y-h2, Math.max(2,4*p.s), h2);
+    });
   }
-  // finish line: checkered strip across the band at bottom center
+  // finish line: checkered strip on the wire (x=CX radial line at bottom)
   for(let r=0;r<12;r++) for(let c2=0;c2<2;c2++){
-    b.fillStyle = (r+c2)%2? '#f4f0e8':'#0c0d1a';
-    b.fillRect(CX-6+c2*6, CY+RYI+ r*(RYO-RYI)/12, 6, (RYO-RYI)/12);
+    const y0=CY+RYI+(RYO-RYI)*r/12, y1=CY+RYI+(RYO-RYI)*(r+1)/12;
+    const p00=project(CX-6+c2*6, y0), p01=project(CX-6+c2*6, y1);
+    const p10=project(CX+c2*6, y0),   p11=project(CX+c2*6, y1);
+    b.fillStyle=(r+c2)%2? '#f4f0e8':'#0c0d1a';
+    b.beginPath();
+    b.moveTo(p00.x,p00.y); b.lineTo(p10.x,p10.y); b.lineTo(p11.x,p11.y); b.lineTo(p01.x,p01.y);
+    b.closePath(); b.fill();
   }
-  // distance poles (inner rail): 3/4, 1/2, 1/4 of race
+  // distance poles on inner rail (3/4, 1/2, 1/4)
   const poleCols=['#4d9be6','#ffcd75','#ef5d66'];
   [0.75,0.5,0.25].forEach((uu,ix)=>{
     const T=arcTab[2];
     let lo=0,hi=NARC; while(hi-lo>1){const m=(lo+hi)>>1;(T.u[m]<=uu)?lo=m:hi=m;}
     const th=T.th[lo];
-    const px=CX+(RXI-10)*Math.cos(th), py=CY+(RYI-10)*Math.sin(th);
-    b.fillStyle='#f4f0e8'; b.fillRect(px-1,py-14,3,14);
-    b.fillStyle=poleCols[ix]; b.fillRect(px-2,py-18,5,5);
+    const B=boundary(LANES);
+    const p=project(CX+(B.rx-6)*Math.cos(th), CY+(B.ry-6)*Math.sin(th));
+    const h2=Math.max(8, 60*p.s);
+    b.fillStyle='#f4f0e8'; b.fillRect(p.x-Math.max(1,2*p.s), p.y-h2, Math.max(2,4*p.s), h2);
+    b.fillStyle=poleCols[ix]; b.fillRect(p.x, p.y-h2, Math.max(5,12*p.s), Math.max(3,8*p.s));
   });
-  // grandstand strip along the bottom
-  b.fillStyle='#232741'; b.fillRect(0,546,W,H-546);
-  b.fillStyle='#34395a'; b.fillRect(0,506,W,40);
-  b.fillStyle='#2a2e45'; b.fillRect(0,492,W,14);
-  b.fillStyle='#1b1e30'; b.fillRect(0,504,W,3);
-  // bunting on the roofline
-  for(let x=6;x<W;x+=20){
-    b.fillStyle = (x/20|0)%2? '#ef5d66':'#ffcd75';
-    b.fillRect(x,497,7,5);
-    b.fillStyle = (x/20|0)%2? '#63c74d':'#4d9be6';
-    b.fillRect(x+10,497,7,5);
-  }
-  // finish post rising into the stands
-  b.fillStyle='#0c0d1a'; b.fillRect(CX-2, CY+RYO-58, 4, 58);
-  for(let y2=CY+RYO-58;y2<CY+RYO;y2+=6){
-    b.fillStyle = (y2/6|0)%2? '#f4f0e8':'#0c0d1a';
-    b.fillRect(CX-2,y2,4,3);
-  }
-  b.fillStyle='#ef5d66'; b.fillRect(CX+2,CY+RYO-58,14,7);  // flag
+  // infield trees as billboards
+  [[CX-120,CY-14],[CX-118,CY+16],[CX-64,CY-26],[CX+16,CY-24],[CX-30,CY+20]].forEach(([tx,ty])=>{
+    const p=project(tx,ty);
+    const s2=Math.max(.35,p.s);
+    b.fillStyle='#5c4626'; b.fillRect(p.x-2*s2, p.y-10*s2, 4*s2, 10*s2);
+    b.fillStyle='#2f6e2f'; b.beginPath(); b.arc(p.x, p.y-16*s2, 12*s2, 0, Math.PI*2); b.fill();
+    b.fillStyle='#3c853c'; b.beginPath(); b.arc(p.x-3*s2, p.y-19*s2, 7*s2, 0, Math.PI*2); b.fill();
+  });
 })();
 
 
-// ---------- live scene elements (oval layout) ----------
+// ---------- live scene elements (perspective view) ----------
 const crowdRows = [];   // {x, row, color, phase}
 (function seedCrowd(){
   const cols = ['#ef5d66','#ffcd75','#63c74d','#4d9be6','#d057d8','#f4f0e8','#e88c5a','#7bd1e8'];
-  for(let row=0; row<3; row++){
+  for(let row=0; row<4; row++){
     for(let x=10; x<W; x+=9){
-      if(Math.random()<0.15) continue;  // gaps
+      if(Math.random()<0.18) continue;
       crowdRows.push({x:x+((row%2)*4), row, color:cols[rndi(0,cols.length-1)],
                       phase:Math.random()*Math.PI*2});
     }
   }
 })();
 let confetti = [];
-let shake = 0; // screen shake magnitude
+let shake = 0;
 
+// bottom frame: our grandstand (foreground) — roof, crowd, rail
 function drawLiveScene(t){
-  // animated crowd in the bottom grandstand strip
   const excited = phase==='race' || phase==='countdown';
   const now = performance.now()/1000;
+  // crowd rows (front rows lower & bigger)
   crowdRows.forEach(p=>{
-    const baseY = 538 + p.row*9;
-    const bobAmt = excited? 2.2 : 0.8;
+    const depth = 1 + (3-p.row)*0.18;         // row 3 farthest
+    const baseY = 470 + p.row*17;
+    const bobAmt = excited? 2.5 : 0.9;
     const y = baseY + Math.sin(now*4 + p.phase)*bobAmt;
+    const w2 = 4*depth, h2 = 5*depth;
     ctx.fillStyle=p.color;
-    ctx.fillRect(p.x, y, 4, 5);
+    ctx.fillRect(p.x, y, w2, h2);
     ctx.fillStyle='#e8b796';
-    ctx.fillRect(p.x, y-3, 3, 3);
+    ctx.fillRect(p.x, y-3*depth, 3*depth, 3*depth);
   });
+  // rail right in front of the stands (bottom of screen)
+  ctx.fillStyle='#8b90b3'; ctx.fillRect(0, H-26, W, 5);
+  for(let x=0;x<W;x+=34){
+    ctx.fillStyle='#5c6183'; ctx.fillRect(x, H-26, 4, 26);
+  }
+  ctx.fillStyle='#8b90b3'; ctx.fillRect(0, H-8, W, 4);
 }
 
 // top-down horse: 12x18 oriented sprite, rotated to heading
@@ -706,24 +763,26 @@ function topDownSprite(h){
 }
 
 function drawGate(open){
-  // gate stalls across the band at gate angle, drawn as bars
+  // gate stalls projected at gate angle (θg), radial line across the band
   const T = arcTab[0];
   const thg = T.th[0];
-  const gx = CX+RXO*Math.cos(thg), gy = CY+RYO*Math.sin(thg);
-  const gxi = CX+RXI*Math.cos(thg), gyi = CY+RYI*Math.sin(thg);
-  const nx = -(gy-gyi), ny = (gx-gxi);
-  const nl = Math.hypot(nx,ny);
-  const ux = nx/nl, uy = ny/nl;   // unit along the gate line
-  ctx.strokeStyle = open? 'rgba(70,75,110,.9)':'#c8cde0';
+  const B1={rx:RXO, ry:RYO}, B2={rx:RXI, ry:RYI};
+  const po=project(CX+B1.rx*Math.cos(thg), CY+B1.ry*Math.sin(thg));
+  const pi=project(CX+B2.rx*Math.cos(thg), CY+B2.ry*Math.sin(thg));
+  // rail bar between outer and inner
+  ctx.strokeStyle = open? 'rgba(70,75,110,.55)':'#c8cde0';
   ctx.lineWidth = open? 2 : 3;
-  ctx.beginPath(); ctx.moveTo(gx,gy); ctx.lineTo(gxi,gyi); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(po.x, po.y-14*po.s); ctx.lineTo(pi.x, pi.y-14*pi.s); ctx.stroke();
   if(!open){
-    // stall doors: ticks perpendicular
+    // stall doors as vertical ticks along the bar
     ctx.strokeStyle='#8b90b3'; ctx.lineWidth=2;
     for(let i=0;i<=LANES;i++){
-      const r = i/LANES;
-      const px = gx+(gxi-gx)*r, py = gy+(gyi-gy)*r;
-      ctx.beginPath(); ctx.moveTo(px-ux*7,py-uy*7); ctx.lineTo(px+ux*7,py+uy*7); ctx.stroke();
+      const r=i/LANES;
+      const wx=CX+(B1.rx+(B2.rx-B1.rx)*r)*Math.cos(thg);
+      const wy=CY+(B1.ry+(B2.ry-B1.ry)*r)*Math.sin(thg);
+      const p=project(wx,wy);
+      const h2=26*p.s;
+      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x, p.y-h2); ctx.stroke();
     }
   }
 }
@@ -750,7 +809,6 @@ function drawConfetti(dt){
 
 let lastFrame = performance.now();
 function drawRace(t, dt){
-  // screen shake on gate open
   ctx.save();
   if(shake>0.1){
     ctx.translate(rnd(-shake,shake), rnd(-shake,shake));
@@ -760,14 +818,14 @@ function drawRace(t, dt){
   drawLiveScene(t);
   drawGate(phase==='race' || phase==='finishwait' || phase==='result');
   const running = phase==='race';
-  // dust: kicked outward from track center on straights
+  // dust (screen-space)
   dust = dust.filter(d=>d.life>0);
   dust.forEach(d=>{
     ctx.fillStyle=`rgba(214,196,150,${d.life})`;
     ctx.fillRect(d.x|0, d.y|0, d.s, d.s);
     d.x-=d.vx; d.y+=d.vy; d.life-=0.03;
   });
-  // sort horses by y so lower (nearer) horses paint over far ones
+  // gather horses with projection
   const order = [];
   for(let i=0;i<6;i++){
     let prog = 0;
@@ -776,35 +834,39 @@ function drawRace(t, dt){
     else prog = 0.003;
     const u = Math.min(prog, 1+PULLUP*2);
     const p = lanePoint(i, u);
-    order.push({i, prog, ...p});
+    const scr = project(p.x, p.y);
+    order.push({i, prog, scr, fwd: p.dx});
   }
-  order.sort((a,b)=>a.y-b.y);
+  order.sort((a,b)=>a.scr.d-b.scr.d);        // farthest first
   order.forEach(o=>{
     const h = field[o.i];
     const speed = racePlan? (o.prog < 1 ? 1/(racePlan.finishT[o.i]||14) : 0) : 0;
-    // draw body: rotate sprite to heading
+    const s = o.scr.s;
+    // gallop frame
+    const fr = running? Math.floor(performance.now()/1000 * (7+speed*30) + o.i*1.7)%6 : 0;
+    // side-view billboard, scaled by perspective, flipped by travel direction
+    const sprW = 34*s*2.6, sprH = 17*s*2.6;
+    const bx = o.scr.x, by = o.scr.y;
+    // shadow on the ground
+    ctx.fillStyle='rgba(10,20,10,.30)';
+    ctx.beginPath(); ctx.ellipse(bx, by, sprW*0.42, sprH*0.13, 0, 0, Math.PI*2); ctx.fill();
     ctx.save();
-    ctx.translate(o.x, o.y);
-    ctx.rotate(o.ang);
-    const spr = topDownSprite(h);
-    const sw = 30, sh2 = 34;   // sprite scale 3x
-    ctx.drawImage(spr, -sw/2, -sh2/2, sw, sh2);
+    ctx.translate(bx, by-sprH*0.94);         // stand on the ground point
+    if(o.fwd < 0) ctx.scale(-1,1);           // heading left → mirror
+    ctx.drawImage(horseSprite(h, fr), -sprW/2, -sprH, sprW, sprH);
     ctx.restore();
-    // shadow: offset toward track center (light overhead)
-    const cxv = o.x-CX, cyv = o.y-CY;
-    const cl2 = Math.hypot(cxv,cyv)||1;
-    ctx.fillStyle='rgba(10,20,10,.28)';
-    ctx.beginPath(); ctx.ellipse(o.x - cxv/cl2*5, o.y - cyv/cl2*5, 15, 8, o.ang, 0, Math.PI*2); ctx.fill();
-    // number tag: silk-colored disc above horse
-    const tagY = o.y-24 + Math.sin(performance.now()/300 + o.i)*1.5;
-    ctx.fillStyle='#0c0d1a'; ctx.beginPath(); ctx.arc(o.x, tagY, 9, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle=h.silk;  ctx.beginPath(); ctx.arc(o.x, tagY, 7.5, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle='#fff'; ctx.font='bold 9px monospace'; ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.fillText(String(o.i+1), o.x, tagY+0.5);
+    // number tag disc
+    const tagR = Math.max(7, 20*s);
+    const tagY = by - sprH*1.05 - tagR;
+    ctx.fillStyle='#0c0d1a'; ctx.beginPath(); ctx.arc(bx, tagY, tagR, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle=h.silk;  ctx.beginPath(); ctx.arc(bx, tagY, tagR*0.82, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle='#fff'; ctx.font=`bold ${Math.max(8,16*s)|0}px monospace`;
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText(String(o.i+1), bx, tagY+1);
     ctx.textBaseline='alphabetic';
-    // dust while running on the home stretch (bottom of screen)
-    if(running && o.prog>0.01 && o.prog<0.995 && o.y>CY && Math.random()<0.18){
-      dust.push({x:o.x+rndi(-6,6), y:o.y+rndi(4,10), s:rndi(3,6), vx:rnd(0.2,1), vy:rnd(-0.1,0.2), life:rnd(0.3,0.5)});
+    // dust on the near stretch
+    if(running && o.prog>0.01 && o.prog<0.995 && o.scr.y>CY && Math.random()<0.2 && s>0.2){
+      dust.push({x:bx+rndi(-8,8)*s*3, y:by+rndi(0,4), s:rndi(2,5), vx:rnd(0.2,1), vy:rnd(-0.2,0), life:rnd(0.3,0.5)});
     }
   });
   drawConfetti(dt||0.016);
