@@ -413,30 +413,26 @@ function rgbHex(r,g,b){ return '#'+[r,g,b].map(v=>Math.round(Math.max(0,Math.min
 function shade(hex,k){ const [r,g,b]=hexRGB(hex);
   return k>=0? rgbHex(r+(255-r)*k, g+(255-g)*k, b+(255-b)*k) : rgbHex(r*(1+k), g*(1+k), b*(1+k)); }
 
-// body incl. crouched jockey + flowing tail + neck (head drawn separately)
+// body: simplified blob (back highlight / barrel / belly) + jockey dot + tail
 const BODY_ART = [
-"",                                              // y0  (ears of head map reach here)
+"",                                              // y0
 "",                                              // y1
-"..............wwss",                           // y2  helmet stripe+cap
-".............wsssek...tCCC",                   // y3  goggles e, face k, mane t, neck top
-"............Sssssskk..tCCCC",                  // y4
-"...........Sssssskkk..tCCCC",                  // y5  arm reaching neck
-"..........Sssssss....tCCCC",                   // y6
-"..tt....ccSssssscccCCCCCCC",                   // y7  saddle cloth meets back, withers
-".tt....ccCCCCCCCCCCCCCCCCCCC",                 // y8  barrel highlight band
-"tt....cccCCCCCCCCCCCCCCCdCC",                  // y9
-"t....dcccccccccccccccccddCC",                  // y10 belly shade
-".....ddccccccccccdddd",                        // y11 underline
-"", "", "", "", ""                               // y12-16 legs (painted)
+"",                                              // y2
+"",                                              // y3
+"",                                              // y4
+"...............ss",                            // y5  jockey silk
+"..t..........ssk",                             // y6  silk + face
+".tt.......ccCCCCCCCCCCCC",                     // y7  back
+"tt......ccCCCCCCCCCCCCCCC",                    // y8
+"t......cccccccccccccccccc",                    // y9
+".......ddddddddddddddd",                       // y10 belly
+"", "", "", "", ""                               // y11-16 legs (painted)
 ];
-// head: ears, forelock, eye, bridle, tapering muzzle — placed at (23+stretch, 0)
+// head: simple 4x3 block with darker muzzle
 const HEAD_ART = [
-"...e..e.",      // ears
-"..tCCeCC",      // forelock + eye
-"..tCCCCC",
-".bCCCCmm",      // bridle b
-"..CCCmmm",      // muzzle
-"...bCmme"       // nostril
+".CC.",
+"CCCC",
+"CCmm"
 ];
 // gallop leg phases: [hindA, hindB, foreA, foreB] = [hipX,hipY, jointX,jointY, hoofX,hoofY]
 const LEG_ART = [
@@ -472,7 +468,7 @@ function buildHorseFrame(f, coat, dark, silk){
   HEAD_ART.forEach((row,y)=>{
     for(let x=0;x<row.length;x++){
       const ch=row[x]; if(ch==='.'||ch===' ') continue;
-      P(x+23+stretch, y+yb+1, PAL[ch]);
+      P(x+23+stretch, y+yb+2, PAL[ch]);
     }
   });
   // legs: thick upper leg, thin cannon, black hoof
@@ -576,13 +572,13 @@ function liftF(x, y){
   const dx2 = Math.abs(x - CX);
   return clamp((dx2 - 120) / 160, 0, 1);       // near straight: fade toward center
 }
-// seats: EVERY tier row packed along the whole footprint
+// seats: every tier row, clipped like the stand structure (no floating corners)
 const standSeats=[];
 (function buildStandSeats(){
   const cols=['#ef5d66','#ffcd75','#63c74d','#4d9be6','#d057d8','#f4f0e8','#e88c5a','#7bd1e8'];
-  // 4 rows of seats climbing the stand slope; heights match tier strips (14/28/42/56)
   const rows=[{lift:12, f:0.16}, {lift:24, f:0.42}, {lift:36, f:0.66}, {lift:50, f:0.90}];
   standBase.forEach((p,i)=>{
+    if(project(p.x,p.y).y > H-24) return;      // clipped with the stand
     if(liftF(p.x,p.y) < 0.2) return;
     rows.forEach((r,ri)=>{
       standSeats.push({wx:p.x, wy:p.y, lift:r.lift, f:r.f,
@@ -744,7 +740,9 @@ const bg = document.createElement('canvas'); bg.width=W; bg.height=H;
   });
 
   // ---------- SURROUNDING GRANDSTAND (drawn AFTER the track: sides overlap it) ----------
-  const SB=standBase;
+  // points whose ground projection falls below the canvas are CLIPPED — those
+  // sections would float over the near corners of the track
+  const SB = standBase.filter(p => project(p.x,p.y).y <= H-24);
   const poly=(dy, lw, style)=>{
     b.beginPath();
     let started=false;
@@ -796,9 +794,11 @@ const bg = document.createElement('canvas'); bg.width=W; bg.height=H;
     b.fillStyle = (x/34|0)%2? '#63c74d':'#4d9be6';
     b.fillRect(x+17, 14, 10, 7);
   }
-  // railing at the bottom: we're standing at the box rail
-  b.fillStyle='#8b90b3'; b.fillRect(0,H-14,W,4);
-  for(let x=0;x<W;x+=42){ b.fillStyle='#5c6183'; b.fillRect(x,H-14,4,14); }
+  // railing at the bottom: only the central span in front of our box
+  // (corners stay open so the near bends of the track read clearly)
+  const railX0 = 190, railX1 = W-190;
+  b.fillStyle='#8b90b3'; b.fillRect(railX0, H-14, railX1-railX0, 4);
+  for(let x=railX0; x<railX1; x+=42){ b.fillStyle='#5c6183'; b.fillRect(x, H-14, 4, 14); }
 })();
 
 
@@ -825,9 +825,10 @@ function drawLiveScene(t){
     ctx.fillStyle='#e8b796';
     ctx.fillRect(s.x-w2/2+p.jitter, y-h2*0.6, w2*0.7, h2*0.6);
   }
-  // our side rail stays as the foreground frame
-  ctx.fillStyle='#8b90b3'; ctx.fillRect(0, H-14, W, 4);
-  for(let x=0;x<W;x+=42){
+  // our side rail: central span only (corners open for the near bends)
+  const railX0 = 190, railX1 = W-190;
+  ctx.fillStyle='#8b90b3'; ctx.fillRect(railX0, H-14, railX1-railX0, 4);
+  for(let x=railX0; x<railX1; x+=42){
     ctx.fillStyle='#5c6183'; ctx.fillRect(x, H-14, 4, 14);
   }
 }
