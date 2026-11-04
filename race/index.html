@@ -1272,6 +1272,7 @@ $('#nextBtn').addEventListener('click',()=>{
   $('#resultModal').classList.remove('show');
   $('#cover').style.display='none';
   phase='bet'; raceNo++;
+  lat = [0,0,0,0,0,0];   // clear lateral racing offsets — new field stands in ITS OWN stalls
   document.querySelectorAll('.hcard').forEach(c=>c.style.pointerEvents='');
   makeField(); renderTickets(); saveBank();
   updateRaceTag();
