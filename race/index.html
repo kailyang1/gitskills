@@ -554,8 +554,8 @@ function lanePoint(i, u){
   return { x: a.x+(b.x-a.x)*f, y: a.y+(b.y-a.y)*f, dx: a.dx+(b.dx-a.dx)*f };
 }
 
-// ---------- perspective camera (v9 grandstand view, zoomed in more) ----------
-const CAMX=CX, CAMY=700, KF=395, VPER=92000, HOR=96;
+// ---------- perspective camera (tight: bottom edge hugs the track) ----------
+const CAMX=CX, CAMY=700, KF=448, VPER=128000, HOR=96;
 function project(x,y){
   const d = CAMY - y;              // depth from camera
   const s = KF/d;                  // perspective scale
