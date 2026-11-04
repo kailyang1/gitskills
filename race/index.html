@@ -421,12 +421,13 @@ const BODY_ART = [
 ".................CCCC...",         // y2  head crown
 ".................eCmm...",         // y3  eye + dark muzzle
 "................CCCC....",         // y4  jaw, slanting into the neck
-"....tt........CCCC......",         // y5  neck; solid 2px tail root at the rump
-"...ttcCCCCssssCCCC......",         // y6  back + silk saddle cloth
-"..ttcCCCCCCCCCCCd......",          // y7
-"....cccccccccccdd.......",         // y8  belly (tail ends)
-"......ddddddddddd...",             // y9
-"", "", "", "", ""                  // y10-15 legs (painted)
+"...ttt.......CCCC......",         // y5  neck; tail root at the rump
+"..tttcCCCCssssCCCC......",         // y6  back + silk saddle cloth
+".tttcCCCCCCCCCCCd......",          // y7
+".tt.cccccccccccdd.......",         // y8
+".tt...ddddddddd........",          // y9  long tail strands past the belly
+"......................",           // y10
+"", "", "", ""                      // y11-15 legs (painted)
 ];
 // stubby gallop legs: [hindA, hindB, foreA, foreB] = hip → knee → hoof
 const LEG_ART = [
@@ -778,6 +779,74 @@ const bg = document.createElement('canvas'); bg.width=W; bg.height=H;
     b.fillStyle = (x/34|0)%2? '#63c74d':'#4d9be6';
     b.fillRect(x+17, 14, 10, 7);
   }
+  // ---------- OUTER GROUNDS (beyond the surrounding stand) ----------
+  // paddock / stables compound on the left, training ring + big trees on the right,
+  // info screen tower, hot-air balloons overhead
+  const orad = bndR(0)+STAND_OFF+34;
+  // grass mottling: darker patches across the outer lawn
+  b.fillStyle='rgba(38,80,36,.35)';
+  for(let i=0;i<40;i++){
+    const a2=i/40*Math.PI*2 + (i*2654435761%97)/97;
+    const rr=orad+10+((i*40503)%1000)/1000*70;
+    const px2=CX+Math.cos(a2)*rr*1.35, py2=CY+Math.sin(a2)*rr;
+    if(py2>CY+80) continue;                       // skip our side (off-screen anyway)
+    const s=project(px2,py2);
+    b.beginPath(); b.ellipse(s.x, s.y, 26*s.s*3, 9*s.s*3, 0, 0, Math.PI*2); b.fill();
+  }
+  // world → screen helper for outer objects
+  const obj=(wx,wy)=>{ const s=project(wx,wy); return {x:s.x, y:s.y, k:Math.max(.35,s.s)}; };
+  // ---- stable barns (left grounds, beyond the left bend): red roofs, white walls, coral fence ----
+  const bx0 = CX-SL-bndR(0)-STAND_OFF-30;   // outside the left bend
+  [[bx0-12, CY-40, 1],[bx0+28, CY+6, .85],[bx0-30, CY+42, .7]].forEach(([wx,wy,sc])=>{
+    const p=obj(wx,wy), k=p.k*sc;
+    b.fillStyle='#b8452f'; b.fillRect(p.x-16*k, p.y-10*k, 32*k, 4*k);      // roof
+    b.fillStyle='#8a3222'; b.fillRect(p.x-17*k, p.y-7*k, 34*k, 3*k);
+    b.fillStyle='#e8e2d0'; b.fillRect(p.x-15*k, p.y-6*k, 30*k, 8*k);       // wall
+    b.fillStyle='#5c4626'; b.fillRect(p.x-2*k, p.y-5*k, 4*k, 7*k);         // door
+    // coral fence in front
+    b.fillStyle='#a8845c';
+    b.fillRect(p.x-20*k, p.y+3*k, 40*k, 2*k);
+    for(let fx=0;fx<5;fx++) b.fillRect(p.x-19*k+fx*9*k, p.y+1*k, 2*k, 4*k);
+  });
+  // ---- training ring (right grounds, beyond the right bend): oval sand + white rail ----
+  {
+    const p=obj(CX+SL+bndR(0)+STAND_OFF+55, CY-10);
+    const k=p.k;
+    b.fillStyle='#d9b47e';
+    b.beginPath(); b.ellipse(p.x, p.y, 30*k*3, 12*k*3, 0, 0, Math.PI*2); b.fill();
+    b.fillStyle='#63a75e';
+    b.beginPath(); b.ellipse(p.x, p.y, 20*k*3, 7*k*3, 0, 0, Math.PI*2); b.fill();
+    b.fillStyle='#e8ecf4';
+    b.beginPath(); b.ellipse(p.x, p.y, 30*k*3, 12*k*3, 0, 0, Math.PI*2); b.stroke();
+    b.strokeStyle='#e8ecf4'; b.lineWidth=Math.max(1,2*k);
+  }
+  // ---- big shade trees scattered on the lawns ----
+  [[CX-40, CY-orad-26, 1.2],[CX+120, CY-orad-14, 1],[CX-190, CY-orad+8, .9],
+   [CX+230, CY-orad+6, .8],[CX-orad*0.72, CY+28, .75]].forEach(([wx,wy,sc])=>{
+    if(wy>CY+60) return;
+    const p=obj(wx,wy), k=p.k*sc;
+    b.fillStyle='#4a3520'; b.fillRect(p.x-2*k, p.y-6*k, 4*k, 8*k);         // trunk
+    b.fillStyle='#2f6e2f'; b.beginPath(); b.arc(p.x, p.y-14*k, 13*k, 0, Math.PI*2); b.fill();
+    b.fillStyle='#3c853c'; b.beginPath(); b.arc(p.x-4*k, p.y-17*k, 8*k, 0, Math.PI*2); b.fill();
+    b.fillStyle='#4d9e4d'; b.beginPath(); b.arc(p.x+5*k, p.y-11*k, 6*k, 0, Math.PI*2); b.fill();
+  });
+  // ---- info screen tower beyond the far straight ----
+  {
+    const p=obj(CX+280, CY-orad-10), k=p.k;
+    b.fillStyle='#5c6183'; b.fillRect(p.x-2*k, p.y-30*k, 4*k, 32*k);       // mast
+    b.fillStyle='#141728'; b.fillRect(p.x-16*k, p.y-48*k, 32*k, 18*k);     // screen bezel
+    b.fillStyle='#2a4d8f'; b.fillRect(p.x-14*k, p.y-46*k, 28*k, 14*k);     // screen
+    b.fillStyle='#ffcd75'; b.fillRect(p.x-10*k, p.y-42*k, 20*k, 3*k);      // "results" line
+    b.fillStyle='#4d9be6'; b.fillRect(p.x-10*k, p.y-37*k, 14*k, 2*k);
+  }
+  // ---- hot-air balloons in the sky ----
+  [[190,54,'#ef5d66'],[830,42,'#4d9be6'],[560,26,'#ffcd75']].forEach(([bx,by,col])=>{
+    b.fillStyle=col;
+    b.beginPath(); b.arc(bx,by,11,0,Math.PI*2); b.fill();
+    b.fillStyle='rgba(255,255,255,.5)'; b.fillRect(bx-3,by-11,3,22);
+    b.fillStyle='#5c4626'; b.fillRect(bx-2,by+11,4,4);
+  });
+
   // railing at the bottom: only the central span in front of our box
   // (corners stay open so the near bends of the track read clearly)
   const railX0 = 190, railX1 = W-190;
