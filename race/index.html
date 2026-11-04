@@ -506,7 +506,7 @@ ctx.imageSmoothingEnabled = false;
 const W = cvs.width, H = cvs.height;
 // ---------- stadium track geometry (long straights + semicircle bends) ----------
 const LANES = 6;
-const CX=520, CY=264, RXO=448, RYO=170, RXI=256, RYI=58, SC=2;
+const CX=520, CY=264, RXO=448, RYO=140, RXI=256, RYI=46, SC=2;
 const SL = 290;                        // straight half-length (world units)
 const START_FRAC = 0.06;               // gate sits 6% of a lap past the wire
 const PULLUP = 0.08;                   // extra arc sampled past finish
@@ -554,8 +554,8 @@ function lanePoint(i, u){
   return { x: a.x+(b.x-a.x)*f, y: a.y+(b.y-a.y)*f, dx: a.dx+(b.dx-a.dx)*f };
 }
 
-// ---------- perspective camera (v9 grandstand view) ----------
-const CAMX=CX, CAMY=700, KF=300, VPER=92000, HOR=96;
+// ---------- perspective camera (v9 grandstand view, zoomed in) ----------
+const CAMX=CX, CAMY=700, KF=345, VPER=92000, HOR=96;
 function project(x,y){
   const d = CAMY - y;              // depth from camera
   const s = KF/d;                  // perspective scale
