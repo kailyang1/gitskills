@@ -414,17 +414,18 @@ function shade(hex,k){ const [r,g,b]=hexRGB(hex);
   return k>=0? rgbHex(r+(255-r)*k, g+(255-g)*k, b+(255-b)*k) : rgbHex(r*(1+k), g*(1+k), b*(1+k)); }
 
 // body: chibi proportions — big head, short round barrel, stubby legs
+// (no jockey: a silk-colored saddle cloth carries the identification colors)
 const BODY_ART = [
 "",                                       // y0
 ".................CCC.",                 // y1  head top
 "................eCCCm",                 // y2  eye + muzzle
-"...........ss..CCCCm",                 // y3  jockey silk + head
-"..tt......sssk.CCCC.",                 // y4
-".tt....ccCCCCCCCCC..",                 // y5  back
-"tt....cCCCCCCCCCCC..",                 // y6
-"t....cCCCCCCCCCCCd..",                 // y7
-".....cccccccccccdd..",                 // y8
-"......ddddddddddd...",                 // y9  belly
+"...............CCCCm",                 // y3  head
+"....tt.........CCCC.",                 // y4  tail springs from the rump
+".....ttccCssssCCCC......",              // y5  back + silk saddle cloth
+"...tt.cCCCCsssCCC.......",              // y6
+"..tt.cCCCCCCCCCCCd......",              // y7
+".tt..cccccccccccdd......",              // y8  tail tip + belly
+"......ddddddddddd...",                 // y9
 "", "", "", "", ""                       // y10-15 legs (painted)
 ];
 // stubby gallop legs: [hindA, hindB, foreA, foreB] = hip → knee → hoof
