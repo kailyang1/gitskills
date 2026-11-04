@@ -323,7 +323,8 @@ let raceNo = LS.get('raceNo', 1);
 let tickets = [];    // {hIdx, type:'W'|'P', amt, odds}
 let betType = 'W';
 let stake = 50;
-let phase = 'bet';   // bet | countdown | race | result
+let phase = 'bet';   // bet | countdown | race | finishwait | result | returning
+let returnT0 = 0;
 let racePlan = null; // per-horse finishT + progress curves
 let raceT0 = 0, raceT = 0, msgAt = {};
 let photoFinish = false, ts = 1; // ts: timescale (test hook)
@@ -956,24 +957,29 @@ function drawRace(t, dt){
   });
   // gather horses with projection + travel direction (lateral racing enabled)
   if(running) updateLanes(dt||0.016);
+  const returning = phase==='returning';
   const order = [];
   for(let i=0;i<6;i++){
     let prog = 0;
     if(phase==='race') prog = progressAt(i, t);
     else if(phase==='finishwait' || phase==='result') prog = 1.04;
+    else if(returning) prog = 1.04*(t+2);            // t=-1-k: 1.04 → 0 (finish → gate)
     else prog = 0.003;
-    const u = Math.min(prog, 1+PULLUP*2);
+    const u = Math.min(Math.max(prog, -0.12), 1+PULLUP*2);
     const p = horsePos(i, u);
     const scr = project(p.x, p.y);
-    order.push({i, prog, scr, nx:p.tx, ny:p.ty});
+    // heading: reverse of racing direction while returning to the gate
+    const hx = returning? -p.tx : p.tx, hy = returning? -p.ty : p.ty;
+    order.push({i, prog, scr, nx:hx, ny:hy});
   }
   order.sort((a,b)=>a.scr.d-b.scr.d);        // farthest first
   order.forEach(o=>{
     const h = field[o.i];
-    const speed = racePlan? (o.prog < 1 ? 1/(racePlan.finishT[o.i]||14) : 0) : 0;
+    const walking = returning;
+    const speed = walking? 0.12 : (racePlan? (o.prog < 1 ? 1/(racePlan.finishT[o.i]||14) : 0) : 0);
     const s = o.scr.s;
-    // gallop frame — faster cadence so motion reads even at distance
-    const fr = running? Math.floor(performance.now()/1000 * (10+speed*44) + o.i*1.7)%6 : 0;
+    // gallop frame — walking uses a slow amble; racing uses speed-scaled cadence
+    const fr = (running||walking)? Math.floor(performance.now()/1000 * ((walking? 4 : 10+speed*44)) + o.i*1.7)%6 : 0;
     // side-view billboard with turning: squash toward travel depth + slight tilt
     const sprW = 24*s*2.9, sprH = 16*s*2.9;
     const bx = o.scr.x, by = o.scr.y;
@@ -1219,6 +1225,15 @@ function loop(now){
     }
   } else if(phase==='result' || phase==='finishwait'){
     drawRace(1e9, dt);
+  } else if(phase==='returning'){
+    // horses walk back to their stalls; new field only after they arrive
+    const k = Math.min((now-returnT0)/1000/1.3, 1);
+    drawRace(-1-k, dt);
+    if(k>=1){
+      phase='bet'; raceNo++;
+      document.querySelectorAll('.hcard').forEach(c=>c.style.pointerEvents='');
+      makeField(); renderTickets(); saveBank(); updateRaceTag();
+    }
   } else {
     drawRace(performance.now()/1000, dt);
   }
@@ -1271,10 +1286,7 @@ $('#go').addEventListener('click', startRace);
 $('#nextBtn').addEventListener('click',()=>{
   $('#resultModal').classList.remove('show');
   $('#cover').style.display='none';
-  phase='bet'; raceNo++;
-  document.querySelectorAll('.hcard').forEach(c=>c.style.pointerEvents='');
-  makeField(); renderTickets(); saveBank();
-  updateRaceTag();
+  phase='returning'; returnT0=performance.now();   // horses trot back to the gate
 });
 function updateRaceTag(){ $('#raceNoTag').textContent = 'R'+raceNo; }
 $('#statsBtn').addEventListener('click', showStats);
