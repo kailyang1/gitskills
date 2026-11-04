@@ -413,77 +413,60 @@ function rgbHex(r,g,b){ return '#'+[r,g,b].map(v=>Math.round(Math.max(0,Math.min
 function shade(hex,k){ const [r,g,b]=hexRGB(hex);
   return k>=0? rgbHex(r+(255-r)*k, g+(255-g)*k, b+(255-b)*k) : rgbHex(r*(1+k), g*(1+k), b*(1+k)); }
 
-// body: simplified blob (back highlight / barrel / belly) + jockey dot + tail
+// body: chibi proportions — big head, short round barrel, stubby legs
 const BODY_ART = [
-"",                                              // y0
-"",                                              // y1
-"",                                              // y2
-"",                                              // y3
-"",                                              // y4
-"...............ss",                            // y5  jockey silk
-"..t..........ssk",                             // y6  silk + face
-".tt.......ccCCCCCCCCCCCC",                     // y7  back
-"tt......ccCCCCCCCCCCCCCCC",                    // y8
-"t......cccccccccccccccccc",                    // y9
-".......ddddddddddddddd",                       // y10 belly
-"", "", "", "", ""                               // y11-16 legs (painted)
+"",                                       // y0
+".................CCC.",                 // y1  head top
+"................eCCCm",                 // y2  eye + muzzle
+"...........ss..CCCCm",                 // y3  jockey silk + head
+"..tt......sssk.CCCC.",                 // y4
+".tt....ccCCCCCCCCC..",                 // y5  back
+"tt....cCCCCCCCCCCC..",                 // y6
+"t....cCCCCCCCCCCCd..",                 // y7
+".....cccccccccccdd..",                 // y8
+"......ddddddddddd...",                 // y9  belly
+"", "", "", "", ""                       // y10-15 legs (painted)
 ];
-// head: simple 4x3 block with darker muzzle
-const HEAD_ART = [
-".CC.",
-"CCCC",
-"CCmm"
-];
-// gallop leg phases: [hindA, hindB, foreA, foreB] = [hipX,hipY, jointX,jointY, hoofX,hoofY]
+// stubby gallop legs: [hindA, hindB, foreA, foreB] = hip → knee → hoof
 const LEG_ART = [
- [[7,11,5,12,2,13],[9,11,7,12,4,14],[20,11,23,12,26,13],[22,11,24,13,27,14]], // F0 suspension: all airborne, stretched
- [[7,11,5,12,3,14],[9,11,8,13,6,15],[20,11,24,13,27,15],[22,11,23,12,25,14]], // F1 reach: fores thrust fwd, hinds trail
- [[7,11,6,13,8,15],[9,11,10,13,11,14],[20,11,20,13,20,16],[22,11,23,13,24,15]], // F2 support: fore planted
- [[7,11,6,13,5,15],[9,11,8,13,7,16],[20,11,21,12,22,13],[22,11,22,12,21,13]], // F3 drive: hinds push ground
- [[7,11,5,12,2,14],[9,11,7,12,4,15],[20,11,21,11,22,12],[22,11,21,12,20,12]], // F4 push-off: hings extended back, body rises
- [[7,11,7,12,6,14],[9,11,9,13,8,15],[20,11,22,12,24,13],[22,11,22,13,23,14]]  // F5 gather: folding under
+ [[6,9,5,11,3,13],[8,9,7,11,6,14],[13,9,15,11,17,13],[15,9,16,11,17,14]], // F0 suspension
+ [[6,9,5,11,4,14],[8,9,7,12,6,14],[13,9,15,12,17,14],[15,9,16,11,18,13]], // F1 reach
+ [[6,9,6,12,7,14],[8,9,9,12,10,13],[13,9,14,12,14,15],[15,9,16,12,17,14]],// F2 support
+ [[6,9,5,12,4,14],[8,9,7,12,7,15],[13,9,14,11,15,12],[15,9,15,11,14,13]], // F3 drive
+ [[6,9,4,11,2,13],[8,9,6,11,5,14],[13,9,14,10,15,11],[15,9,14,11,13,12]], // F4 push
+ [[6,9,5,11,4,13],[8,9,8,12,8,14],[13,9,15,11,16,13],[15,9,16,12,17,14]]  // F5 gather
 ];
 const BODY_BOB = [-1,0,0,0,-1,0];   // suspension lifts, support drops
 
 function buildHorseFrame(f, coat, dark, silk){
-  const cv = document.createElement('canvas'); cv.width=34; cv.height=17;
+  const cv = document.createElement('canvas'); cv.width=24; cv.height=16;
   const c = cv.getContext('2d');
   const PAL = {
     C: shade(coat, .28), c: coat, d: dark, t: shade(dark, -.5),
-    s: silk, S: shade(silk, -.38), k: '#e8b796', K: '#c9926e',
-    w: '#f4f0e8', e: '#14141e', m: shade(coat, -.35), b: '#7a5230', h: '#26262e'
+    s: silk, S: shade(silk, -.38), k: '#e8b796',
+    w: '#f4f0e8', e: '#14141e', m: shade(coat, -.35), h: '#26262e'
   };
-  const P=(x,y,col)=>{ if(x<0||x>33||y<0||y>16) return; c.fillStyle=col; c.fillRect(x,y,1,1); };
+  const P=(x,y,col)=>{ if(x<0||x>23||y<0||y>15) return; c.fillStyle=col; c.fillRect(x,y,1,1); };
   const yb = BODY_BOB[f];
-  const stretch = (f===0)?1:0;   // body elongates at full suspension
 
-  // body art
+  // body + head art
   BODY_ART.forEach((row,y)=>{
     for(let x=0;x<row.length;x++){
       const ch=row[x]; if(ch==='.'||ch===' ') continue;
       P(x, y+yb, PAL[ch]);
     }
   });
-  // head art at variable x (stretch)
-  HEAD_ART.forEach((row,y)=>{
-    for(let x=0;x<row.length;x++){
-      const ch=row[x]; if(ch==='.'||ch===' ') continue;
-      P(x+23+stretch, y+yb+2, PAL[ch]);
-    }
-  });
-  // legs: thick upper leg, thin cannon, black hoof
+  // stubby legs
   const leg=(ax,ay,jx,jy,hx,hy)=>{
     ay+=yb; jy+=yb; hy+=yb;
-    const seg=(x1,y1,x2,y2,w)=>{
+    const seg=(x1,y1,x2,y2)=>{
       const n=Math.max(Math.abs(x2-x1),Math.abs(y2-y1),1);
       for(let s2=0;s2<=n;s2++){
-        const px=Math.round(x1+(x2-x1)*s2/n), py=Math.round(y1+(y2-y1)*s2/n);
-        P(px,py,PAL.d); if(w>1) P(px,py+1,PAL.d);
+        P(Math.round(x1+(x2-x1)*s2/n), Math.round(y1+(y2-y1)*s2/n), PAL.d);
       }
     };
-    seg(ax,ay,jx,jy,2);            // upper leg w/ forearm/thigh mass
-    seg(jx,jy,hx,hy,1);            // cannon bone
-    P(hx,hy,PAL.h); P(hx+1,hy,PAL.h); P(hx,hy+1,PAL.h); // hoof
+    seg(ax,ay,jx,jy); seg(jx,jy,hx,hy);
+    P(hx,hy,PAL.h); P(hx+1,hy,PAL.h);
   };
   LEG_ART[f].forEach(L=>leg(...L));
   return cv;
@@ -992,7 +975,7 @@ function drawRace(t, dt){
     // gallop frame — faster cadence so motion reads even at distance
     const fr = running? Math.floor(performance.now()/1000 * (10+speed*44) + o.i*1.7)%6 : 0;
     // side-view billboard with turning: squash toward travel depth + slight tilt
-    const sprW = 34*s*2.6, sprH = 17*s*2.6;
+    const sprW = 24*s*2.9, sprH = 16*s*2.9;
     const bx = o.scr.x, by = o.scr.y;
     const facingLeft = o.nx < 0;
     const squash = Math.max(0.42, Math.abs(o.nx));       // 1 on straights, →0.42 turning away
